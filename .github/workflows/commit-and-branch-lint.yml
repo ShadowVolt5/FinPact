@@ -13,6 +13,7 @@ jobs:
         with: { fetch-depth: 0 }
 
       - name: Validate branch name
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name != 'main' && github.ref_name != 'master')
         shell: bash
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
