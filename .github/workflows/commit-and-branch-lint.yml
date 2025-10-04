@@ -29,6 +29,9 @@ jobs:
           fi
           FAIL=0
           while IFS= read -r s; do
+            if [[ "$s" =~ ^Merge\ pull\ request ]]; then
+              continue
+            fi
             [[ "$s" =~ ^(feat|fix)\(BFP-[0-9]+\):\ [a-z].+ ]] || { echo "Bad commit: $s"; FAIL=1; }
           done < <(git log --format=%s "$RANGE")
           exit $FAIL
