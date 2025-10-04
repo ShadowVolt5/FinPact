@@ -1,0 +1,34 @@
+name: commit-and-branch-lint
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['master','main']
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Validate branch name
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          [[ "$BRANCH" =~ ^(feature|bugfix)/BFP-[0-9]+$ ]] || {
+            echo "Invalid branch: $BRANCH (use feature/BFP-<num> or bugfix/BFP-<num>)"; exit 1; }
+
+      - name: Validate commit messages
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          else
+            BEFORE="${{ github.event.before }}"
+            [[ "$BEFORE" =~ ^0+$ ]] && RANGE="$(git rev-list --max-count=50 HEAD | tail -1)..HEAD" || RANGE="$BEFORE..${{ github.sha }}"
+          fi
+          FAIL=0
+          while IFS= read -r s; do
+            [[ "$s" =~ ^(feat|fix)\(BFP-[0-9]+\):\ [a-z].+ ]] || { echo "Bad commit: $s"; FAIL=1; }
+          done < <(git log --format=%s "$RANGE")
+          exit $FAIL
