@@ -4,3 +4,15 @@ ktor:
             - ru.finpact.ApplicationKt.module
     deployment:
         port: 8080
+
+db:
+    autoCommit: false
+    transactionIsolation: "TRANSACTION_READ_COMMITTED"
+
+    maximumPoolSize: 32
+    minimumIdle: 6
+
+    connectionTimeoutMs: 30000
+    idleTimeoutMs: 600000
+    maxLifetimeMs: 1800000
+    keepaliveTimeMs: 0
