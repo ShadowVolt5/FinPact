@@ -1,8 +1,7 @@
-rootProject.name = "limits"
+rootProject.name = "commons"
 
 dependencyResolutionManagement {
     repositories {
-        mavenLocal()
         mavenCentral()
     }
 }

@@ -2,22 +2,17 @@
 kotlin = "2.0.0"
 ktor = "3.0.0"
 logback = "1.4.14"
-
-# DB stack
-postgres = "42.7.8"
-hikari = "7.0.2"
+finpact-commons = "0.0.1"
 
 [libraries]
 ktor-server-core = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor" }
 ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 ktor-server-config-yaml = { module = "io.ktor:ktor-server-config-yaml", version.ref = "ktor" }
+finpact-commons = { module = "ru.finpact:commons", version.ref = "finpact-commons" }
+
 ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
 kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
-
-# DB stack
-postgresql = { module = "org.postgresql:postgresql", version.ref = "postgres" }
-hikaricp   = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
