@@ -5,6 +5,7 @@ import ru.finpact.contracts.annotations.Post
 import ru.finpact.contracts.annotations.Pre
 import ru.finpact.contracts.core.*
 import java.lang.reflect.InvocationHandler
+import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.util.concurrent.ConcurrentHashMap
@@ -43,7 +44,17 @@ object ContractProxy {
             runRules(classInvariants, before, "invariant(before)")
             runRules(preCache.getOrPut(method) { instantiatePre(method) }, before, "pre")
 
-            val result = method.invoke(target, *arrayArgs)
+            val result = try {
+                method.invoke(target, *arrayArgs)
+            } catch (ite: InvocationTargetException) {
+                val cause = ite.targetException ?: ite.cause ?: ite
+                when (cause) {
+                    is ContractViolation -> throw cause
+                    is RuntimeException -> throw cause
+                    is Error -> throw cause
+                    else -> throw RuntimeException(cause)
+                }
+            }
 
             val after = before.copy(result = result)
             runRules(postCache.getOrPut(method) { instantiatePost(method) }, after, "post")
@@ -65,7 +76,8 @@ object ContractProxy {
                     throw e
                 } catch (t: Throwable) {
                     throw ContractViolation(
-                        "$phase failed in ${ctx.method.declaringClass.simpleName}.${ctx.method.name}: ${t.message ?: t::class.java.name}"
+                        "$phase failed in ${ctx.method.declaringClass.simpleName}.${ctx.method.name}: " +
+                                (t.message ?: t::class.java.name)
                     )
                 }
             }
