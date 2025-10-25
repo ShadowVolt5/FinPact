@@ -2,6 +2,8 @@ package ru.finpact.infra.repository.impl
 
 import ru.finpact.infra.db.Database
 import ru.finpact.infra.repository.AuthRepository
+import ru.finpact.model.User
+import java.sql.ResultSet
 import java.sql.Types
 
 class AuthRepositoryImpl : AuthRepository {
@@ -50,4 +52,30 @@ class AuthRepositoryImpl : AuthRepository {
                 }
             }
         }
+
+    override fun findUserByEmail(email: String): User? =
+        Database.withConnection { conn ->
+            conn.prepareStatement(
+                """
+                SELECT id, email, first_name, middle_name, last_name, password
+                FROM users
+                WHERE lower(email) = lower(?)
+                LIMIT 1
+                """.trimIndent()
+            ).use { ps ->
+                ps.setString(1, email)
+                ps.executeQuery().use { rs ->
+                    if (rs.next()) mapUser(rs) else null
+                }
+            }
+        }
+
+    private fun mapUser(rs: ResultSet) = User(
+        id = rs.getLong("id"),
+        email = rs.getString("email"),
+        firstName = rs.getString("first_name"),
+        middleName = rs.getString("middle_name"),
+        lastName = rs.getString("last_name"),
+        password = rs.getString("password")
+    )
 }

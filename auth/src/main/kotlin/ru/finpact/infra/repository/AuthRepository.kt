@@ -1,5 +1,7 @@
 package ru.finpact.infra.repository
 
+import ru.finpact.model.User
+
 interface AuthRepository {
     fun findUserIdByEmail(email: String): Long?
     fun insertUser(
@@ -9,4 +11,5 @@ interface AuthRepository {
         lastName: String,
         passwordHash: String
     ): Long
+    fun findUserByEmail(email: String): User?
 }
