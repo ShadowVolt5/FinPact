@@ -13,6 +13,8 @@ dependencies {
     // Общая утилита/аспектный код часто использует рефлексию
     implementation(libs.kotlin.reflect)
 
+    implementation(libs.ktor.serialization.kotlinx.json)
+
     // Реэкспортируем DB-стек транзитивно (придёт в auth/payments)
     api(libs.hikaricp)
     api(libs.postgresql)
