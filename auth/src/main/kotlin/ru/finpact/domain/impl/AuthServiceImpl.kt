@@ -10,8 +10,8 @@ import ru.finpact.dto.login.UserView
 import ru.finpact.dto.register.RegisterRequest
 import ru.finpact.dto.register.RegisterResponse
 import ru.finpact.dto.sql.PgSqlState
-import ru.finpact.infra.repository.AuthRepository
 import ru.finpact.jwt.JwtService
+import ru.finpact.infra.repository.AuthRepository
 import java.sql.SQLException
 
 class AuthServiceImpl(

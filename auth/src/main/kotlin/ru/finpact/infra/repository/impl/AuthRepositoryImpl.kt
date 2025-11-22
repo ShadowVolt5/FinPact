@@ -70,6 +70,23 @@ class AuthRepositoryImpl : AuthRepository {
             }
         }
 
+    override fun findUserById(id: Long): User? =
+        Database.withConnection { conn ->
+            conn.prepareStatement(
+                """
+                SELECT id, email, first_name, middle_name, last_name, password
+                FROM users
+                WHERE id = ?
+                LIMIT 1
+                """.trimIndent()
+            ).use { ps ->
+                ps.setLong(1, id)
+                ps.executeQuery().use { rs ->
+                    if (rs.next()) mapUser(rs) else null
+                }
+            }
+        }
+
     private fun mapUser(rs: ResultSet) = User(
         id = rs.getLong("id"),
         email = rs.getString("email"),
