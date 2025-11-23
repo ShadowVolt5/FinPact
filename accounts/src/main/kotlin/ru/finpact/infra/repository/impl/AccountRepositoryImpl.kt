@@ -1,13 +1,13 @@
 package ru.finpact.infra.repository.impl
 
 import ru.finpact.infra.db.Database
-import ru.finpact.infra.repository.AccountsRepository
+import ru.finpact.infra.repository.AccountRepository
 import ru.finpact.model.Account
 import java.math.BigDecimal
 import java.sql.ResultSet
 import java.sql.Types
 
-class AccountsRepositoryImpl : AccountsRepository {
+class AccountRepositoryImpl : AccountRepository {
 
     override fun createAccount(
         ownerId: Long,
@@ -52,6 +52,26 @@ class AccountsRepositoryImpl : AccountsRepository {
                 ps.setLong(1, id)
                 ps.executeQuery().use { rs ->
                     if (rs.next()) mapAccount(rs) else null
+                }
+            }
+        }
+
+    override fun deposit(accountId: Long, amount: BigDecimal): Account =
+        Database.withTransaction { conn ->
+            conn.prepareStatement(
+                """
+                UPDATE accounts
+                SET balance = balance + ?
+                WHERE id = ?
+                RETURNING id, owner_id, currency, alias, balance, is_active, created_at
+                """.trimIndent()
+            ).use { ps ->
+                ps.setBigDecimal(1, amount)
+                ps.setLong(2, accountId)
+
+                ps.executeQuery().use { rs ->
+                    require(rs.next()) { "UPDATE accounts did not return row" }
+                    mapAccount(rs)
                 }
             }
         }
