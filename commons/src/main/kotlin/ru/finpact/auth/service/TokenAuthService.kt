@@ -3,8 +3,8 @@ package ru.finpact.auth.service
 import ru.finpact.auth.AuthPrincipal
 import ru.finpact.contracts.annotations.Post
 import ru.finpact.contracts.annotations.Pre
-import ru.finpact.contracts.utils.AuthHeaderPresent
-import ru.finpact.contracts.utils.ResultNotNull
+import ru.finpact.contracts.utils.pre.AuthHeaderPresent
+import ru.finpact.contracts.utils.post.ResultNotNull
 
 /**
  * Контрактный сервис аутентификации:

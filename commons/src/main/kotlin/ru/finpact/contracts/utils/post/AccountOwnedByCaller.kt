@@ -1,4 +1,4 @@
-package ru.finpact.contracts.utils
+package ru.finpact.contracts.utils.post
 
 import ru.finpact.contracts.core.ContractContext
 import ru.finpact.contracts.core.ContractViolation

@@ -2,7 +2,8 @@ package ru.finpact.domain
 
 import ru.finpact.contracts.annotations.Post
 import ru.finpact.contracts.annotations.Pre
-import ru.finpact.contracts.utils.*
+import ru.finpact.contracts.utils.post.ResultNotNull
+import ru.finpact.contracts.utils.pre.*
 import ru.finpact.dto.login.LoginRequest
 import ru.finpact.dto.login.LoginResponse
 import ru.finpact.dto.register.RegisterRequest

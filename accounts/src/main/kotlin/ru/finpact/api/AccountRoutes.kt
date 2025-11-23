@@ -13,8 +13,9 @@ import ru.finpact.domain.impl.AccountServiceImpl
 import ru.finpact.domain.impl.SubjectExistencePortImpl
 import ru.finpact.domain.impl.TokenAuthServiceImpl
 import ru.finpact.dto.common.AccountResponse
-import ru.finpact.dto.create.OpenAccountRequest
-import ru.finpact.infra.repository.impl.AccountsRepositoryImpl
+import ru.finpact.dto.created.OpenAccountRequest
+import ru.finpact.dto.deposits.DepositRequest
+import ru.finpact.infra.repository.impl.AccountRepositoryImpl
 import ru.finpact.infra.repository.impl.UsersRepositoryImpl
 
 fun Application.accountRoutes() {
@@ -26,7 +27,7 @@ fun Application.accountRoutes() {
     val tokenAuthService: TokenAuthService =
         ContractProxy.wrap<TokenAuthService>(rawTokenAuthService)
 
-    val accountsRepo = AccountsRepositoryImpl()
+    val accountsRepo = AccountRepositoryImpl()
     val rawAccountService = AccountServiceImpl(accountsRepo)
     val accountService: AccountService =
         ContractProxy.wrap<AccountService>(rawAccountService)
@@ -49,13 +50,13 @@ fun Application.accountRoutes() {
                 call.respond(HttpStatusCode.Created, result)
             }
 
-            get("/{id}") {
+            get("/{accountId}") {
                 val authHeader = call.request.headers[HttpHeaders.Authorization]
                     ?: throw ContractViolation("Authorization header must be provided")
 
                 val principal = tokenAuthService.authenticate(authHeader)
 
-                val idParam = call.parameters["id"]
+                val idParam = call.parameters["accountId"]
                     ?: throw ContractViolation("account id must be provided")
 
                 val accountId = idParam.toLongOrNull()
@@ -64,6 +65,29 @@ fun Application.accountRoutes() {
                 val result: AccountResponse = accountService.getAccount(
                     ownerId = principal.userId,
                     accountId = accountId,
+                )
+
+                call.respond(HttpStatusCode.OK, result)
+            }
+
+            post("/{accountId}/deposits") {
+                val authHeader = call.request.headers[HttpHeaders.Authorization]
+                    ?: throw ContractViolation("Authorization header must be provided")
+
+                val principal = tokenAuthService.authenticate(authHeader)
+
+                val idParam = call.parameters["accountId"]
+                    ?: throw ContractViolation("account id must be provided")
+
+                val accountId = idParam.toLongOrNull()
+                    ?: throw ContractViolation("account id must be a number")
+
+                val request = call.receive<DepositRequest>()
+
+                val result: AccountResponse = accountService.deposit(
+                    ownerId = principal.userId,
+                    accountId = accountId,
+                    request = request,
                 )
 
                 call.respond(HttpStatusCode.OK, result)

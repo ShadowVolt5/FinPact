@@ -3,7 +3,7 @@ package ru.finpact.infra.repository
 import ru.finpact.model.Account
 import java.math.BigDecimal
 
-interface AccountsRepository {
+interface AccountRepository {
 
     fun createAccount(
         ownerId: Long,
@@ -13,4 +13,6 @@ interface AccountsRepository {
     ): Account
 
     fun findById(id: Long): Account?
+
+    fun deposit(accountId: Long, amount: BigDecimal): Account
 }

@@ -1,4 +1,4 @@
-package ru.finpact.dto.create
+package ru.finpact.dto.created
 
 import kotlinx.serialization.Serializable
 
