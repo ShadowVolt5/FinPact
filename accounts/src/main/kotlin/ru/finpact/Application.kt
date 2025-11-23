@@ -1,7 +1,12 @@
 package ru.finpact
 
+import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
+import io.ktor.server.plugins.contentnegotiation.*
+import kotlinx.serialization.json.Json
+import ru.finpact.api.accountRoutes
 import ru.finpact.infra.db.Database
+import ru.finpact.infra.http.installErrorHandling
 
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)
@@ -9,7 +14,18 @@ fun main(args: Array<String>) {
 
 fun Application.module() {
     Database.init(environment.config)
-    configureRouting()
+
+    install(ContentNegotiation) {
+        json(
+            Json {
+                explicitNulls = false
+                ignoreUnknownKeys = true
+            }
+        )
+    }
+
+    installErrorHandling()
+    accountRoutes()
 
     environment.monitor.subscribe(ApplicationStopped) {
         Database.close()
