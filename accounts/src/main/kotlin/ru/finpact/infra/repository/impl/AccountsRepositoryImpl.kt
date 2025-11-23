@@ -20,7 +20,7 @@ class AccountsRepositoryImpl : AccountsRepository {
                 """
                 INSERT INTO accounts(owner_id, currency, alias, balance, is_active)
                 VALUES (?, ?, ?, ?, TRUE)
-                RETURNING id, owner_id, currency, alias, balance, is_active
+                RETURNING id, owner_id, currency, alias, balance, is_active, created_at
                 """.trimIndent()
             ).use { ps ->
                 ps.setLong(1, ownerId)
@@ -39,6 +39,23 @@ class AccountsRepositoryImpl : AccountsRepository {
             }
         }
 
+    override fun findById(id: Long): Account? =
+        Database.withConnection { conn ->
+            conn.prepareStatement(
+                """
+                SELECT id, owner_id, currency, alias, balance, is_active, created_at
+                FROM accounts
+                WHERE id = ?
+                LIMIT 1
+                """.trimIndent()
+            ).use { ps ->
+                ps.setLong(1, id)
+                ps.executeQuery().use { rs ->
+                    if (rs.next()) mapAccount(rs) else null
+                }
+            }
+        }
+
     private fun mapAccount(rs: ResultSet) = Account(
         id = rs.getLong("id"),
         ownerId = rs.getLong("owner_id"),
@@ -46,5 +63,6 @@ class AccountsRepositoryImpl : AccountsRepository {
         alias = rs.getString("alias"),
         balance = rs.getBigDecimal("balance"),
         isActive = rs.getBoolean("is_active"),
+        createdAt = rs.getTimestamp("created_at").toInstant(),
     )
 }

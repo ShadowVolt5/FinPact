@@ -11,4 +11,6 @@ interface AccountsRepository {
         alias: String?,
         initialBalance: BigDecimal = BigDecimal.ZERO,
     ): Account
+
+    fun findById(id: Long): Account?
 }

@@ -2,11 +2,9 @@ package ru.finpact.domain
 
 import ru.finpact.contracts.annotations.Post
 import ru.finpact.contracts.annotations.Pre
-import ru.finpact.contracts.utils.OpenAccountRequestValid
-import ru.finpact.contracts.utils.OwnerIdPositive
-import ru.finpact.contracts.utils.ResultNotNull
+import ru.finpact.contracts.utils.*
 import ru.finpact.dto.create.OpenAccountRequest
-import ru.finpact.dto.create.OpenAccountResponse
+import ru.finpact.dto.common.AccountResponse
 
 interface AccountService {
 
@@ -15,5 +13,15 @@ interface AccountService {
         OpenAccountRequestValid::class,
     )
     @Post(ResultNotNull::class)
-    fun openAccount(ownerId: Long, request: OpenAccountRequest): OpenAccountResponse
+    fun openAccount(ownerId: Long, request: OpenAccountRequest): AccountResponse
+
+    @Pre(
+        AccountIdPositive::class,
+        OwnerIdPositive::class,
+    )
+    @Post(
+        ResultNotNull::class,
+        AccountOwnedByCaller::class,
+    )
+    fun getAccount(accountId: Long, ownerId: Long): AccountResponse
 }
