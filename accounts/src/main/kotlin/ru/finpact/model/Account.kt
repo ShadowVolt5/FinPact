@@ -1,0 +1,12 @@
+package ru.finpact.model
+
+import java.math.BigDecimal
+
+data class Account(
+    val id: Long,
+    val ownerId: Long,
+    val currency: String,
+    val alias: String?,
+    val balance: BigDecimal,
+    val isActive: Boolean,
+)
