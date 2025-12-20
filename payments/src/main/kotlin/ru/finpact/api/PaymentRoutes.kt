@@ -12,6 +12,7 @@ import ru.finpact.domain.PaymentService
 import ru.finpact.domain.impl.PaymentServiceImpl
 import ru.finpact.domain.impl.SubjectExistencePortImpl
 import ru.finpact.domain.impl.TokenAuthServiceImpl
+import ru.finpact.dto.gettransfers.PaymentDetailsResponse
 import ru.finpact.dto.transfers.CreateTransferRequest
 import ru.finpact.dto.transfers.TransferResponse
 import ru.finpact.infra.repository.impl.PaymentRepositoryImpl
@@ -45,6 +46,26 @@ fun Application.paymentRoutes() {
                 )
 
                 call.respond(HttpStatusCode.Created, result)
+            }
+
+            get("/{paymentId}") {
+                val authHeader = call.request.headers[HttpHeaders.Authorization]
+                    ?: throw ContractViolation("Authorization header must be provided")
+
+                val principal = tokenAuthService.authenticate(authHeader)
+
+                val idParam = call.parameters["paymentId"]
+                    ?: throw ContractViolation("payment id must be provided")
+
+                val paymentId = idParam.toLongOrNull()
+                    ?: throw ContractViolation("payment id must be a number")
+
+                val result: PaymentDetailsResponse = paymentService.getPaymentDetails(
+                    ownerId = principal.userId,
+                    paymentId = paymentId,
+                )
+
+                call.respond(HttpStatusCode.OK, result)
             }
         }
     }

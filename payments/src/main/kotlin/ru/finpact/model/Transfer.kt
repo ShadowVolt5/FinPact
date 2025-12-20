@@ -9,6 +9,7 @@ data class Transfer(
     val toAccountId: Long,
     val amount: BigDecimal,
     val currency: String,
+    val status: PaymentStatus,
     val description: String?,
     val initiatedBy: Long,
     val createdAt: Instant,

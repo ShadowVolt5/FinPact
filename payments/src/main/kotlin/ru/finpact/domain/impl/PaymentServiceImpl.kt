@@ -1,8 +1,12 @@
 package ru.finpact.domain.impl
 
 import ru.finpact.contracts.annotations.Invariants
+import ru.finpact.contracts.core.ContractViolation
 import ru.finpact.contracts.utils.invariants.StatelessServiceInvariant
 import ru.finpact.domain.PaymentService
+import ru.finpact.dto.gettransfers.CounterpartyAccountView
+import ru.finpact.dto.gettransfers.OwnerAccountSliceView
+import ru.finpact.dto.gettransfers.PaymentDetailsResponse
 import ru.finpact.dto.transfers.CreateTransferRequest
 import ru.finpact.dto.transfers.TransferResponse
 import ru.finpact.infra.repository.PaymentRepository
@@ -33,6 +37,32 @@ class PaymentServiceImpl(
             currency = transfer.currency,
             description = transfer.description,
             createdAt = transfer.createdAt.toString(),
+        )
+    }
+
+    override fun getPaymentDetails(ownerId: Long, paymentId: Long): PaymentDetailsResponse {
+        val details = paymentRepository.findPaymentDetails(
+            initiatedBy = ownerId,
+            paymentId = paymentId,
+        ) ?: throw ContractViolation("payment not found")
+
+        return PaymentDetailsResponse(
+            id = details.id,
+            status = details.status.name,
+            from = OwnerAccountSliceView(
+                id = details.from.id,
+                currency = details.from.currency,
+                balance = details.from.balance.stripTrailingZeros().toPlainString(),
+                isActive = details.from.isActive,
+            ),
+            to = CounterpartyAccountView(
+                id = details.to.id,
+                currency = details.to.currency,
+            ),
+            amount = details.amount.stripTrailingZeros().toPlainString(),
+            currency = details.currency,
+            description = details.description,
+            createdAt = details.createdAt.toString(),
         )
     }
 }
