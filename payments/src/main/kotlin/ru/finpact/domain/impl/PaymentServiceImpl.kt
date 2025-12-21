@@ -7,6 +7,7 @@ import ru.finpact.domain.PaymentService
 import ru.finpact.dto.gettransfers.CounterpartyAccountView
 import ru.finpact.dto.gettransfers.OwnerAccountSliceView
 import ru.finpact.dto.gettransfers.PaymentDetailsResponse
+import ru.finpact.dto.refunds.RefundListResponse
 import ru.finpact.dto.refunds.RefundResponse
 import ru.finpact.dto.searchpayments.PaymentListItemResponse
 import ru.finpact.dto.searchpayments.PaymentsSearchRequest
@@ -124,6 +125,26 @@ class PaymentServiceImpl(
             amount = refund.amount.stripTrailingZeros().toPlainString(),
             currency = refund.currency,
             createdAt = refund.createdAt.toString(),
+        )
+    }
+
+    override fun listRefunds(ownerId: Long, paymentId: Long): RefundListResponse {
+        val refunds = paymentRepository.listRefunds(
+            initiatedBy = ownerId,
+            originalPaymentId = paymentId,
+        ) ?: throw ContractViolation("payment not found")
+
+        return RefundListResponse(
+            items = refunds.map { r ->
+                RefundResponse(
+                    refundPaymentId = r.id,
+                    originalPaymentId = paymentId,
+                    status = r.status.name,
+                    amount = r.amount.stripTrailingZeros().toPlainString(),
+                    currency = r.currency,
+                    createdAt = r.createdAt.toString(),
+                )
+            }
         )
     }
 }

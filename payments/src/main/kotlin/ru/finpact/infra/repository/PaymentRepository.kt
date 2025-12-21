@@ -29,4 +29,9 @@ interface PaymentRepository {
         limit: Int,
         offset: Long,
     ): TransferSearchPage
+
+    fun listRefunds(
+        initiatedBy: Long,
+        originalPaymentId: Long,
+    ): List<Transfer>?
 }
