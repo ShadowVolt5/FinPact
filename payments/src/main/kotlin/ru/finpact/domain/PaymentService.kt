@@ -8,6 +8,7 @@ import ru.finpact.contracts.utils.pre.PaymentIdPositive
 import ru.finpact.contracts.utils.pre.PaymentsSearchQueryValid
 import ru.finpact.contracts.utils.pre.TransferRequestValid
 import ru.finpact.dto.gettransfers.PaymentDetailsResponse
+import ru.finpact.dto.refunds.RefundListResponse
 import ru.finpact.dto.refunds.RefundResponse
 import ru.finpact.dto.searchpayments.PaymentsSearchRequest
 import ru.finpact.dto.searchpayments.PaymentsSearchResponse
@@ -56,4 +57,15 @@ interface PaymentService {
         ResultNotNull::class,
         RefundResponseValid::class)
     fun createRefund(ownerId: Long, paymentId: Long): RefundResponse
+
+    @Pre(
+        OwnerIdPositive::class,
+        PaymentIdPositive::class
+    )
+    @Post(
+        ResultNotNull::class,
+        RefundListMatchesRequest::class,
+        RefundListResponseValid::class,
+    )
+    fun listRefunds(ownerId: Long, paymentId: Long): RefundListResponse
 }

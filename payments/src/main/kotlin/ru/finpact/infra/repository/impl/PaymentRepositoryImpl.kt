@@ -246,6 +246,30 @@ class PaymentRepositoryImpl : PaymentRepository {
             }
         }
 
+    override fun listRefunds(initiatedBy: Long, originalPaymentId: Long): List<Transfer>? =
+        Database.withConnection { conn ->
+            if (!ownedPaymentExists(conn, initiatedBy, originalPaymentId)) return@withConnection null
+
+            conn.prepareStatement(
+                """
+                SELECT id, from_account_id, to_account_id, amount, currency, status, kind, refund_of, description, initiated_by, created_at
+                FROM transfers
+                WHERE initiated_by = ? AND refund_of = ? AND kind = ?
+                ORDER BY created_at ASC, id ASC
+                """.trimIndent()
+            ).use { ps ->
+                ps.setLong(1, initiatedBy)
+                ps.setLong(2, originalPaymentId)
+                ps.setString(3, PaymentKind.REFUND.name)
+
+                val rows = mutableListOf<Transfer>()
+                ps.executeQuery().use { rs ->
+                    while (rs.next()) rows += mapTransferRow(rs)
+                }
+                rows
+            }
+        }
+
     private sealed interface CreateTransferOutcome {
         data class Success(val transfer: Transfer) : CreateTransferOutcome
         data class Failure(val reason: String, val paymentId: Long) : CreateTransferOutcome
@@ -322,6 +346,20 @@ class PaymentRepositoryImpl : PaymentRepository {
                     kind = kind,
                 )
             }
+        }
+
+    private fun ownedPaymentExists(conn: Connection, initiatedBy: Long, paymentId: Long): Boolean =
+        conn.prepareStatement(
+            """
+            SELECT 1
+            FROM transfers
+            WHERE id = ? AND initiated_by = ?
+            LIMIT 1
+            """.trimIndent()
+        ).use { ps ->
+            ps.setLong(1, paymentId)
+            ps.setLong(2, initiatedBy)
+            ps.executeQuery().use { rs -> rs.next() }
         }
 
     private fun refundExists(conn: Connection, originalPaymentId: Long): Boolean =
