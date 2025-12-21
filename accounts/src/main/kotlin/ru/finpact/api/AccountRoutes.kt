@@ -20,7 +20,6 @@ import ru.finpact.infra.repository.impl.UsersRepositoryImpl
 
 fun Application.accountRoutes() {
     val usersRepo = UsersRepositoryImpl()
-
     val subjectPort = SubjectExistencePortImpl(usersRepo)
 
     val rawTokenAuthService = TokenAuthServiceImpl(subjectPort)
@@ -34,12 +33,9 @@ fun Application.accountRoutes() {
 
     routing {
         route("/accounts") {
+
             post {
-                val authHeader = call.request.headers[HttpHeaders.Authorization]
-                    ?: throw ContractViolation("Authorization header must be provided")
-
-                val principal = tokenAuthService.authenticate(authHeader)
-
+                val principal = call.requirePrincipal(tokenAuthService)
                 val request = call.receive<OpenAccountRequest>()
 
                 val result = accountService.openAccount(
@@ -51,37 +47,20 @@ fun Application.accountRoutes() {
             }
 
             get("/{accountId}") {
-                val authHeader = call.request.headers[HttpHeaders.Authorization]
-                    ?: throw ContractViolation("Authorization header must be provided")
-
-                val principal = tokenAuthService.authenticate(authHeader)
-
-                val idParam = call.parameters["accountId"]
-                    ?: throw ContractViolation("account id must be provided")
-
-                val accountId = idParam.toLongOrNull()
-                    ?: throw ContractViolation("account id must be a number")
+                val principal = call.requirePrincipal(tokenAuthService)
+                val accountId = call.requirePathLong("accountId", "account id")
 
                 val result: AccountResponse = accountService.getAccount(
-                    ownerId = principal.userId,
                     accountId = accountId,
+                    ownerId = principal.userId,
                 )
 
                 call.respond(HttpStatusCode.OK, result)
             }
 
             post("/{accountId}/deposits") {
-                val authHeader = call.request.headers[HttpHeaders.Authorization]
-                    ?: throw ContractViolation("Authorization header must be provided")
-
-                val principal = tokenAuthService.authenticate(authHeader)
-
-                val idParam = call.parameters["accountId"]
-                    ?: throw ContractViolation("account id must be provided")
-
-                val accountId = idParam.toLongOrNull()
-                    ?: throw ContractViolation("account id must be a number")
-
+                val principal = call.requirePrincipal(tokenAuthService)
+                val accountId = call.requirePathLong("accountId", "account id")
                 val request = call.receive<DepositRequest>()
 
                 val result: AccountResponse = accountService.deposit(
@@ -94,4 +73,18 @@ fun Application.accountRoutes() {
             }
         }
     }
+}
+
+private fun ApplicationCall.requirePrincipal(tokenAuthService: TokenAuthService) =
+    tokenAuthService.authenticate(
+        request.headers[HttpHeaders.Authorization]
+            ?: throw ContractViolation.unauthorized("Authorization header must be provided")
+    )
+
+private fun ApplicationCall.requirePathLong(paramName: String, humanName: String): Long {
+    val raw = parameters[paramName]
+        ?: throw ContractViolation.badRequest("$humanName must be provided")
+
+    return raw.toLongOrNull()
+        ?: throw ContractViolation.badRequest("$humanName must be a number")
 }
