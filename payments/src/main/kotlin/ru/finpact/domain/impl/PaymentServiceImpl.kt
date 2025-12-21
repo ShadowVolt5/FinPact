@@ -16,6 +16,7 @@ import ru.finpact.dto.transfers.CreateTransferRequest
 import ru.finpact.dto.transfers.TransferResponse
 import ru.finpact.infra.repository.PaymentRepository
 import ru.finpact.model.PaymentStatus
+import ru.finpact.model.Transfer
 import ru.finpact.model.TransferSearchFilter
 import java.math.BigDecimal
 import java.time.Instant
@@ -26,7 +27,12 @@ class PaymentServiceImpl(
 ) : PaymentService {
 
     override fun createTransfer(ownerId: Long, request: CreateTransferRequest): TransferResponse {
-        val amount = BigDecimal(request.amount.trim())
+        val amount = try {
+            BigDecimal(request.amount.trim())
+        } catch (_: Throwable) {
+            throw ContractViolation.badRequest("amount must be a valid decimal number")
+        }
+
         val description = request.description?.trim()?.ifBlank { null }
 
         val transfer = paymentRepository.createTransfer(
@@ -37,22 +43,14 @@ class PaymentServiceImpl(
             description = description,
         )
 
-        return TransferResponse(
-            id = transfer.id,
-            fromAccountId = transfer.fromAccountId,
-            toAccountId = transfer.toAccountId,
-            amount = transfer.amount.stripTrailingZeros().toPlainString(),
-            currency = transfer.currency,
-            description = transfer.description,
-            createdAt = transfer.createdAt.toString(),
-        )
+        return transfer.toTransferDto()
     }
 
     override fun getPaymentDetails(ownerId: Long, paymentId: Long): PaymentDetailsResponse {
         val details = paymentRepository.findPaymentDetails(
             initiatedBy = ownerId,
             paymentId = paymentId,
-        ) ?: throw ContractViolation("payment not found")
+        ) ?: throw ContractViolation.notFound("payment not found")
 
         return PaymentDetailsResponse(
             id = details.id,
@@ -75,15 +73,46 @@ class PaymentServiceImpl(
     }
 
     override fun searchPayments(ownerId: Long, query: PaymentsSearchRequest): PaymentsSearchResponse {
-        val status = query.status?.trim()?.takeIf { it.isNotEmpty() }?.let { PaymentStatus.valueOf(it) }
+        val status = query.status
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let {
+                try {
+                    PaymentStatus.valueOf(it)
+                } catch (_: Throwable) {
+                    throw ContractViolation.badRequest("status is invalid")
+                }
+            }
+
+        val createdFrom = query.createdFrom
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let {
+                try {
+                    Instant.parse(it)
+                } catch (_: Throwable) {
+                    throw ContractViolation.badRequest("createdFrom must be ISO-8601 instant")
+                }
+            }
+
+        val createdTo = query.createdTo
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let {
+                try {
+                    Instant.parse(it)
+                } catch (_: Throwable) {
+                    throw ContractViolation.badRequest("createdTo must be ISO-8601 instant")
+                }
+            }
 
         val filter = TransferSearchFilter(
             status = status,
             fromAccountId = query.fromAccountId,
             toAccountId = query.toAccountId,
             currency = query.currency?.trim()?.takeIf { it.isNotEmpty() },
-            createdFrom = query.createdFrom?.trim()?.takeIf { it.isNotEmpty() }?.let(Instant::parse),
-            createdTo = query.createdTo?.trim()?.takeIf { it.isNotEmpty() }?.let(Instant::parse),
+            createdFrom = createdFrom,
+            createdTo = createdTo,
         )
 
         val page = paymentRepository.searchTransfers(
@@ -132,7 +161,7 @@ class PaymentServiceImpl(
         val refunds = paymentRepository.listRefunds(
             initiatedBy = ownerId,
             originalPaymentId = paymentId,
-        ) ?: throw ContractViolation("payment not found")
+        ) ?: throw ContractViolation.notFound("payment not found")
 
         return RefundListResponse(
             items = refunds.map { r ->
@@ -148,3 +177,13 @@ class PaymentServiceImpl(
         )
     }
 }
+
+private fun Transfer.toTransferDto() = TransferResponse(
+    id = id,
+    fromAccountId = fromAccountId,
+    toAccountId = toAccountId,
+    amount = amount.stripTrailingZeros().toPlainString(),
+    currency = currency,
+    description = description,
+    createdAt = createdAt.toString(),
+)

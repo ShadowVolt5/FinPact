@@ -19,7 +19,12 @@ class PaymentRepositoryImpl : PaymentRepository {
         description: String?,
     ): Transfer {
         val outcome: CreateTransferOutcome = Database.withTransaction { conn ->
-            val normalizedAmount = amount.setScale(4, RoundingMode.UNNECESSARY)
+            val normalizedAmount = try {
+                amount.setScale(4, RoundingMode.UNNECESSARY)
+            } catch (_: Throwable) {
+                return@withTransaction failNoInsert("amount scale must be <= 4")
+            }
+
             val normalizedDescription = description?.trim()?.ifBlank { null }
 
             val (firstId, secondId) =
@@ -82,32 +87,32 @@ class PaymentRepositoryImpl : PaymentRepository {
 
         return when (outcome) {
             is CreateTransferOutcome.Success -> outcome.transfer
-            is CreateTransferOutcome.Failure -> throw ContractViolation(outcome.reason)
-            is CreateTransferOutcome.FailureNoInsert -> throw ContractViolation(outcome.reason)
+            is CreateTransferOutcome.Failure -> throw outcome.reason.toViolation()
+            is CreateTransferOutcome.FailureNoInsert -> throw outcome.reason.toViolation()
         }
     }
 
     override fun createRefund(initiatedBy: Long, originalPaymentId: Long): Transfer =
         Database.withTransaction { conn ->
             val original = lockOwnedTransfer(conn, originalPaymentId, initiatedBy)
-                ?: throw ContractViolation("payment not found")
+                ?: throw ContractViolation.notFound("payment not found")
 
-            if (original.kind != PaymentKind.TRANSFER) throw ContractViolation("refund not allowed")
-            if (original.status != PaymentStatus.COMPLETED) throw ContractViolation("refund not allowed")
+            if (original.kind != PaymentKind.TRANSFER) throw ContractViolation.conflict("refund not allowed")
+            if (original.status != PaymentStatus.COMPLETED) throw ContractViolation.conflict("refund not allowed")
 
-            if (refundExists(conn, originalPaymentId)) throw ContractViolation("refund already exists")
+            if (refundExists(conn, originalPaymentId)) throw ContractViolation.conflict("refund already exists")
 
             val fromId = original.fromAccountId
             val toId = original.toAccountId
 
             val (firstId, secondId) = if (fromId < toId) fromId to toId else toId to fromId
-            val a1 = lockAccount(conn, firstId) ?: throw ContractViolation("payment not found")
-            val a2 = lockAccount(conn, secondId) ?: throw ContractViolation("payment not found")
+            val a1 = lockAccount(conn, firstId) ?: throw ContractViolation.notFound("payment not found")
+            val a2 = lockAccount(conn, secondId) ?: throw ContractViolation.notFound("payment not found")
 
             val from = if (a1.id == fromId) a1 else a2
             val to = if (a1.id == toId) a1 else a2
 
-            if (from.ownerId != initiatedBy) throw ContractViolation("payment not found")
+            if (from.ownerId != initiatedBy) throw ContractViolation.notFound("payment not found")
 
             val currency = from.currency.trim().uppercase()
 
@@ -132,7 +137,7 @@ class PaymentRepositoryImpl : PaymentRepository {
                     refundOf = originalPaymentId,
                     description = null,
                 )
-                throw ContractViolation(reason)
+                throw reason.toViolation()
             }
 
             withdraw(conn, toId, original.amount)
@@ -385,7 +390,7 @@ class PaymentRepositoryImpl : PaymentRepository {
         ).use { ps ->
             ps.setBigDecimal(1, amount)
             ps.setLong(2, accountId)
-            if (ps.executeUpdate() != 1) throw ContractViolation("account not found")
+            if (ps.executeUpdate() != 1) throw ContractViolation.notFound("account not found")
         }
     }
 
@@ -399,7 +404,7 @@ class PaymentRepositoryImpl : PaymentRepository {
         ).use { ps ->
             ps.setBigDecimal(1, amount)
             ps.setLong(2, accountId)
-            if (ps.executeUpdate() != 1) throw ContractViolation("account not found")
+            if (ps.executeUpdate() != 1) throw ContractViolation.notFound("account not found")
         }
     }
 
@@ -515,8 +520,27 @@ class PaymentRepositoryImpl : PaymentRepository {
     }
 
     private fun parseStatus(raw: String): PaymentStatus =
-        try { PaymentStatus.valueOf(raw) } catch (_: Throwable) { throw ContractViolation("invalid payment status") }
+        try {
+            PaymentStatus.valueOf(raw)
+        } catch (_: Throwable) {
+            throw ContractViolation.internal("invalid payment status in DB")
+        }
 
     private fun parseKind(raw: String): PaymentKind =
-        try { PaymentKind.valueOf(raw) } catch (_: Throwable) { throw ContractViolation("invalid payment kind") }
+        try {
+            PaymentKind.valueOf(raw)
+        } catch (_: Throwable) {
+            throw ContractViolation.internal("invalid payment kind in DB")
+        }
+}
+
+private fun String.toViolation(): ContractViolation = when (this) {
+    "account not found" -> ContractViolation.notFound("account not found")
+    "payment not found" -> ContractViolation.notFound("payment not found")
+    "amount scale must be <= 4" -> ContractViolation.badRequest("amount scale must be <= 4")
+    "insufficient funds" -> ContractViolation.conflict("insufficient funds")
+    "account is not active" -> ContractViolation.conflict("account is not active")
+    "refund not allowed" -> ContractViolation.conflict("refund not allowed")
+    "refund already exists" -> ContractViolation.conflict("refund already exists")
+    else -> ContractViolation.badRequest(this)
 }

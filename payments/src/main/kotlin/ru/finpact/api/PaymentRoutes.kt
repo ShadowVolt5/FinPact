@@ -16,6 +16,7 @@ import ru.finpact.dto.gettransfers.PaymentDetailsResponse
 import ru.finpact.dto.refunds.RefundListResponse
 import ru.finpact.dto.refunds.RefundResponse
 import ru.finpact.dto.searchpayments.PaymentsSearchRequest
+import ru.finpact.dto.searchpayments.PaymentsSearchResponse
 import ru.finpact.dto.transfers.CreateTransferRequest
 import ru.finpact.dto.transfers.TransferResponse
 import ru.finpact.infra.repository.impl.PaymentRepositoryImpl
@@ -36,13 +37,11 @@ fun Application.paymentRoutes() {
 
     routing {
         route("/payments") {
+
             post("/transfers") {
-                val authHeader = call.request.headers[HttpHeaders.Authorization]
-                    ?: throw ContractViolation("Authorization header must be provided")
-
-                val principal = tokenAuthService.authenticate(authHeader)
-
+                val principal = call.requirePrincipal(tokenAuthService)
                 val request = call.receive<CreateTransferRequest>()
+
                 val result: TransferResponse = paymentService.createTransfer(
                     ownerId = principal.userId,
                     request = request,
@@ -52,16 +51,8 @@ fun Application.paymentRoutes() {
             }
 
             post("/{paymentId}/refunds") {
-                val authHeader = call.request.headers[HttpHeaders.Authorization]
-                    ?: throw ContractViolation("Authorization header must be provided")
-
-                val principal = tokenAuthService.authenticate(authHeader)
-
-                val idParam = call.parameters["paymentId"]
-                    ?: throw ContractViolation("payment id must be provided")
-
-                val paymentId = idParam.toLongOrNull()
-                    ?: throw ContractViolation("payment id must be a number")
+                val principal = call.requirePrincipal(tokenAuthService)
+                val paymentId = call.requirePathLong("paymentId", "payment id")
 
                 val result: RefundResponse = paymentService.createRefund(
                     ownerId = principal.userId,
@@ -72,16 +63,8 @@ fun Application.paymentRoutes() {
             }
 
             get("/{paymentId}") {
-                val authHeader = call.request.headers[HttpHeaders.Authorization]
-                    ?: throw ContractViolation("Authorization header must be provided")
-
-                val principal = tokenAuthService.authenticate(authHeader)
-
-                val idParam = call.parameters["paymentId"]
-                    ?: throw ContractViolation("payment id must be provided")
-
-                val paymentId = idParam.toLongOrNull()
-                    ?: throw ContractViolation("payment id must be a number")
+                val principal = call.requirePrincipal(tokenAuthService)
+                val paymentId = call.requirePathLong("paymentId", "payment id")
 
                 val result: PaymentDetailsResponse = paymentService.getPaymentDetails(
                     ownerId = principal.userId,
@@ -92,42 +75,20 @@ fun Application.paymentRoutes() {
             }
 
             get {
-                val authHeader = call.request.headers[HttpHeaders.Authorization]
-                    ?: throw ContractViolation("Authorization header must be provided")
-
-                val principal = tokenAuthService.authenticate(authHeader)
-
-                val status = call.request.queryParameters["status"]
-                val fromAccountId = call.request.queryParameters["fromAccountId"]?.toLongOrNull()
-                    ?: call.request.queryParameters["fromAccountId"]?.let { throw ContractViolation("fromAccountId must be a number") }
-
-                val toAccountId = call.request.queryParameters["toAccountId"]?.toLongOrNull()
-                    ?: call.request.queryParameters["toAccountId"]?.let { throw ContractViolation("toAccountId must be a number") }
-
-                val currency = call.request.queryParameters["currency"]
-                val createdFrom = call.request.queryParameters["createdFrom"]
-                val createdTo = call.request.queryParameters["createdTo"]
-
-                val limit = call.request.queryParameters["limit"]?.toIntOrNull()
-                    ?: call.request.queryParameters["limit"]?.let { throw ContractViolation("limit must be a number") }
-                    ?: 50
-
-                val offset = call.request.queryParameters["offset"]?.toLongOrNull()
-                    ?: call.request.queryParameters["offset"]?.let { throw ContractViolation("offset must be a number") }
-                    ?: 0L
+                val principal = call.requirePrincipal(tokenAuthService)
 
                 val query = PaymentsSearchRequest(
-                    status = status,
-                    fromAccountId = fromAccountId,
-                    toAccountId = toAccountId,
-                    currency = currency,
-                    createdFrom = createdFrom,
-                    createdTo = createdTo,
-                    limit = limit,
-                    offset = offset,
+                    status = call.queryStringOrNull("status"),
+                    fromAccountId = call.queryLongOrNull("fromAccountId", "fromAccountId"),
+                    toAccountId = call.queryLongOrNull("toAccountId", "toAccountId"),
+                    currency = call.queryStringOrNull("currency"),
+                    createdFrom = call.queryStringOrNull("createdFrom"),
+                    createdTo = call.queryStringOrNull("createdTo"),
+                    limit = call.queryIntOrDefault("limit", "limit", 50),
+                    offset = call.queryLongOrDefault("offset", "offset", 0L),
                 )
 
-                val result = paymentService.searchPayments(
+                val result: PaymentsSearchResponse = paymentService.searchPayments(
                     ownerId = principal.userId,
                     query = query,
                 )
@@ -136,16 +97,8 @@ fun Application.paymentRoutes() {
             }
 
             get("/{paymentId}/refunds") {
-                val authHeader = call.request.headers[HttpHeaders.Authorization]
-                    ?: throw ContractViolation("Authorization header must be provided")
-
-                val principal = tokenAuthService.authenticate(authHeader)
-
-                val idParam = call.parameters["paymentId"]
-                    ?: throw ContractViolation("payment id must be provided")
-
-                val paymentId = idParam.toLongOrNull()
-                    ?: throw ContractViolation("payment id must be a number")
+                val principal = call.requirePrincipal(tokenAuthService)
+                val paymentId = call.requirePathLong("paymentId", "payment id")
 
                 val result: RefundListResponse = paymentService.listRefunds(
                     ownerId = principal.userId,
@@ -156,4 +109,39 @@ fun Application.paymentRoutes() {
             }
         }
     }
+}
+
+private fun ApplicationCall.requirePrincipal(tokenAuthService: TokenAuthService) =
+    tokenAuthService.authenticate(
+        request.headers[HttpHeaders.Authorization]
+            ?: throw ContractViolation.unauthorized("Authorization header must be provided")
+    )
+
+private fun ApplicationCall.requirePathLong(paramName: String, humanName: String): Long {
+    val raw = parameters[paramName]
+        ?: throw ContractViolation.badRequest("$humanName must be provided")
+
+    return raw.toLongOrNull()
+        ?: throw ContractViolation.badRequest("$humanName must be a number")
+}
+
+private fun ApplicationCall.queryStringOrNull(name: String): String? =
+    request.queryParameters[name]
+
+private fun ApplicationCall.queryLongOrNull(name: String, humanName: String): Long? {
+    val raw = request.queryParameters[name] ?: return null
+    return raw.toLongOrNull()
+        ?: throw ContractViolation.badRequest("$humanName must be a number")
+}
+
+private fun ApplicationCall.queryIntOrDefault(name: String, humanName: String, default: Int): Int {
+    val raw = request.queryParameters[name] ?: return default
+    return raw.toIntOrNull()
+        ?: throw ContractViolation.badRequest("$humanName must be a number")
+}
+
+private fun ApplicationCall.queryLongOrDefault(name: String, humanName: String, default: Long): Long {
+    val raw = request.queryParameters[name] ?: return default
+    return raw.toLongOrNull()
+        ?: throw ContractViolation.badRequest("$humanName must be a number")
 }
