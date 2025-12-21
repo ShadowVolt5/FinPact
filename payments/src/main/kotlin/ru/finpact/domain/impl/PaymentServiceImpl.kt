@@ -7,6 +7,7 @@ import ru.finpact.domain.PaymentService
 import ru.finpact.dto.gettransfers.CounterpartyAccountView
 import ru.finpact.dto.gettransfers.OwnerAccountSliceView
 import ru.finpact.dto.gettransfers.PaymentDetailsResponse
+import ru.finpact.dto.refunds.RefundResponse
 import ru.finpact.dto.searchpayments.PaymentListItemResponse
 import ru.finpact.dto.searchpayments.PaymentsSearchRequest
 import ru.finpact.dto.searchpayments.PaymentsSearchResponse
@@ -107,6 +108,22 @@ class PaymentServiceImpl(
             limit = query.limit,
             offset = query.offset,
             hasMore = page.hasMore,
+        )
+    }
+
+    override fun createRefund(ownerId: Long, paymentId: Long): RefundResponse {
+        val refund = paymentRepository.createRefund(
+            initiatedBy = ownerId,
+            originalPaymentId = paymentId,
+        )
+
+        return RefundResponse(
+            refundPaymentId = refund.id,
+            originalPaymentId = paymentId,
+            status = refund.status.name,
+            amount = refund.amount.stripTrailingZeros().toPlainString(),
+            currency = refund.currency,
+            createdAt = refund.createdAt.toString(),
         )
     }
 }

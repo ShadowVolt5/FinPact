@@ -54,6 +54,8 @@ class PaymentRepositoryImpl : PaymentRepository {
                     amount = normalizedAmount,
                     currency = currency,
                     status = PaymentStatus.FAILED,
+                    kind = PaymentKind.TRANSFER,
+                    refundOf = null,
                     description = normalizedDescription,
                 )
                 return@withTransaction CreateTransferOutcome.Failure(reason, failed.id)
@@ -70,6 +72,8 @@ class PaymentRepositoryImpl : PaymentRepository {
                 amount = normalizedAmount,
                 currency = currency,
                 status = PaymentStatus.COMPLETED,
+                kind = PaymentKind.TRANSFER,
+                refundOf = null,
                 description = normalizedDescription,
             )
 
@@ -82,6 +86,71 @@ class PaymentRepositoryImpl : PaymentRepository {
             is CreateTransferOutcome.FailureNoInsert -> throw ContractViolation(outcome.reason)
         }
     }
+
+    override fun createRefund(initiatedBy: Long, originalPaymentId: Long): Transfer =
+        Database.withTransaction { conn ->
+            val original = lockOwnedTransfer(conn, originalPaymentId, initiatedBy)
+                ?: throw ContractViolation("payment not found")
+
+            if (original.kind != PaymentKind.TRANSFER) throw ContractViolation("refund not allowed")
+            if (original.status != PaymentStatus.COMPLETED) throw ContractViolation("refund not allowed")
+
+            if (refundExists(conn, originalPaymentId)) throw ContractViolation("refund already exists")
+
+            val fromId = original.fromAccountId
+            val toId = original.toAccountId
+
+            val (firstId, secondId) = if (fromId < toId) fromId to toId else toId to fromId
+            val a1 = lockAccount(conn, firstId) ?: throw ContractViolation("payment not found")
+            val a2 = lockAccount(conn, secondId) ?: throw ContractViolation("payment not found")
+
+            val from = if (a1.id == fromId) a1 else a2
+            val to = if (a1.id == toId) a1 else a2
+
+            if (from.ownerId != initiatedBy) throw ContractViolation("payment not found")
+
+            val currency = from.currency.trim().uppercase()
+
+            val reason: String? = when {
+                !from.isActive -> "account is not active"
+                !to.isActive -> "refund not allowed"
+                from.currency.trim().uppercase() != to.currency.trim().uppercase() -> "refund not allowed"
+                to.balance < original.amount -> "refund not allowed"
+                else -> null
+            }
+
+            if (reason != null) {
+                insertTransfer(
+                    conn = conn,
+                    initiatedBy = initiatedBy,
+                    fromAccountId = fromId,
+                    toAccountId = toId,
+                    amount = original.amount,
+                    currency = currency,
+                    status = PaymentStatus.FAILED,
+                    kind = PaymentKind.REFUND,
+                    refundOf = originalPaymentId,
+                    description = null,
+                )
+                throw ContractViolation(reason)
+            }
+
+            withdraw(conn, toId, original.amount)
+            deposit(conn, fromId, original.amount)
+
+            insertTransfer(
+                conn = conn,
+                initiatedBy = initiatedBy,
+                fromAccountId = fromId,
+                toAccountId = toId,
+                amount = original.amount,
+                currency = currency,
+                status = PaymentStatus.COMPLETED,
+                kind = PaymentKind.REFUND,
+                refundOf = originalPaymentId,
+                description = null,
+            )
+        }
 
     override fun findPaymentDetails(initiatedBy: Long, paymentId: Long): PaymentDetails? =
         Database.withConnection { conn ->
@@ -121,6 +190,7 @@ class PaymentRepositoryImpl : PaymentRepository {
             }
         }
 
+    @Suppress("SqlSourceToSinkFlow")
     override fun searchTransfers(
         initiatedBy: Long,
         filter: TransferSearchFilter,
@@ -131,7 +201,7 @@ class PaymentRepositoryImpl : PaymentRepository {
             val sql = buildString {
                 append(
                     """
-                    SELECT id, from_account_id, to_account_id, amount, currency, status, description, initiated_by, created_at
+                    SELECT id, from_account_id, to_account_id, amount, currency, status, kind, refund_of, description, initiated_by, created_at
                     FROM transfers
                     WHERE initiated_by = ?
                     """.trimIndent()
@@ -193,6 +263,16 @@ class PaymentRepositoryImpl : PaymentRepository {
         val isActive: Boolean,
     )
 
+    private data class TransferRow(
+        val id: Long,
+        val fromAccountId: Long,
+        val toAccountId: Long,
+        val amount: BigDecimal,
+        val currency: String,
+        val status: PaymentStatus,
+        val kind: PaymentKind,
+    )
+
     private fun lockAccount(conn: Connection, id: Long): AccountRow? =
         conn.prepareStatement(
             """
@@ -213,6 +293,48 @@ class PaymentRepositoryImpl : PaymentRepository {
                     isActive = rs.getBoolean("is_active"),
                 )
             }
+        }
+
+    private fun lockOwnedTransfer(conn: Connection, paymentId: Long, initiatedBy: Long): TransferRow? =
+        conn.prepareStatement(
+            """
+            SELECT id, from_account_id, to_account_id, amount, currency, status, kind
+            FROM transfers
+            WHERE id = ? AND initiated_by = ?
+            FOR UPDATE
+            """.trimIndent()
+        ).use { ps ->
+            ps.setLong(1, paymentId)
+            ps.setLong(2, initiatedBy)
+            ps.executeQuery().use { rs ->
+                if (!rs.next()) return null
+
+                val status = parseStatus(rs.getString("status"))
+                val kind = parseKind(rs.getString("kind"))
+
+                TransferRow(
+                    id = rs.getLong("id"),
+                    fromAccountId = rs.getLong("from_account_id"),
+                    toAccountId = rs.getLong("to_account_id"),
+                    amount = rs.getBigDecimal("amount"),
+                    currency = rs.getString("currency").trim().uppercase(),
+                    status = status,
+                    kind = kind,
+                )
+            }
+        }
+
+    private fun refundExists(conn: Connection, originalPaymentId: Long): Boolean =
+        conn.prepareStatement(
+            """
+            SELECT 1
+            FROM transfers
+            WHERE refund_of = ?
+            LIMIT 1
+            """.trimIndent()
+        ).use { ps ->
+            ps.setLong(1, originalPaymentId)
+            ps.executeQuery().use { rs -> rs.next() }
         }
 
     private fun withdraw(conn: Connection, accountId: Long, amount: BigDecimal) {
@@ -251,6 +373,8 @@ class PaymentRepositoryImpl : PaymentRepository {
         amount: BigDecimal,
         currency: String,
         status: PaymentStatus,
+        kind: PaymentKind,
+        refundOf: Long?,
         description: String?,
     ): Transfer =
         conn.prepareStatement(
@@ -261,10 +385,12 @@ class PaymentRepositoryImpl : PaymentRepository {
                 amount,
                 currency,
                 status,
+                kind,
+                refund_of,
                 description,
                 initiated_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id, created_at
             """.trimIndent()
         ).use { ps ->
@@ -273,8 +399,10 @@ class PaymentRepositoryImpl : PaymentRepository {
             ps.setBigDecimal(3, amount)
             ps.setString(4, currency)
             ps.setString(5, status.name)
-            ps.setString(6, description)
-            ps.setLong(7, initiatedBy)
+            ps.setString(6, kind.name)
+            if (refundOf == null) ps.setNull(7, java.sql.Types.BIGINT) else ps.setLong(7, refundOf)
+            ps.setString(8, description)
+            ps.setLong(9, initiatedBy)
 
             ps.executeQuery().use { rs ->
                 require(rs.next()) { "INSERT transfers did not return row" }
@@ -288,6 +416,8 @@ class PaymentRepositoryImpl : PaymentRepository {
                     amount = amount,
                     currency = currency,
                     status = status,
+                    kind = kind,
+                    refundOf = refundOf,
                     description = description,
                     initiatedBy = initiatedBy,
                     createdAt = createdAt,
@@ -296,11 +426,11 @@ class PaymentRepositoryImpl : PaymentRepository {
         }
 
     private fun mapTransferRow(rs: ResultSet): Transfer {
-        val statusRaw = rs.getString("status")
-        val status = try {
-            PaymentStatus.valueOf(statusRaw)
-        } catch (_: Throwable) {
-            throw ContractViolation("invalid payment status")
+        val status = parseStatus(rs.getString("status"))
+        val kind = parseKind(rs.getString("kind"))
+
+        val refundOf = rs.getLong("refund_of").let { v ->
+            if (rs.wasNull()) null else v
         }
 
         return Transfer(
@@ -310,6 +440,8 @@ class PaymentRepositoryImpl : PaymentRepository {
             amount = rs.getBigDecimal("amount"),
             currency = rs.getString("currency").trim().uppercase(),
             status = status,
+            kind = kind,
+            refundOf = refundOf,
             description = rs.getString("description"),
             initiatedBy = rs.getLong("initiated_by"),
             createdAt = rs.getTimestamp("created_at").toInstant(),
@@ -317,15 +449,7 @@ class PaymentRepositoryImpl : PaymentRepository {
     }
 
     private fun mapPaymentDetails(rs: ResultSet): PaymentDetails {
-        val id = rs.getLong("id")
-
-        val statusRaw = rs.getString("status")
-        val status = try {
-            PaymentStatus.valueOf(statusRaw)
-        } catch (_: Throwable) {
-            throw ContractViolation("invalid payment status")
-        }
-
+        val status = parseStatus(rs.getString("status"))
         val currency = rs.getString("currency").trim().uppercase()
 
         val from = OwnerAccountSlice(
@@ -341,7 +465,7 @@ class PaymentRepositoryImpl : PaymentRepository {
         )
 
         return PaymentDetails(
-            id = id,
+            id = rs.getLong("id"),
             status = status,
             from = from,
             to = to,
@@ -351,4 +475,10 @@ class PaymentRepositoryImpl : PaymentRepository {
             createdAt = rs.getTimestamp("created_at").toInstant(),
         )
     }
+
+    private fun parseStatus(raw: String): PaymentStatus =
+        try { PaymentStatus.valueOf(raw) } catch (_: Throwable) { throw ContractViolation("invalid payment status") }
+
+    private fun parseKind(raw: String): PaymentKind =
+        try { PaymentKind.valueOf(raw) } catch (_: Throwable) { throw ContractViolation("invalid payment kind") }
 }

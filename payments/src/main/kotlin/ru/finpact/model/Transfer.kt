@@ -10,6 +10,8 @@ data class Transfer(
     val amount: BigDecimal,
     val currency: String,
     val status: PaymentStatus,
+    val kind: PaymentKind,
+    val refundOf: Long? = null,
     val description: String?,
     val initiatedBy: Long,
     val createdAt: Instant,
