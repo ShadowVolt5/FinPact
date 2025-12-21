@@ -16,10 +16,12 @@ interface PaymentRepository {
         description: String?,
     ): Transfer
 
-    fun findPaymentDetails(
+    fun createRefund(
         initiatedBy: Long,
-        paymentId: Long,
-    ): PaymentDetails?
+        originalPaymentId: Long,
+    ): Transfer
+
+    fun findPaymentDetails(initiatedBy: Long, paymentId: Long): PaymentDetails?
 
     fun searchTransfers(
         initiatedBy: Long,

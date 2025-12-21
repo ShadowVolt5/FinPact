@@ -8,6 +8,7 @@ import ru.finpact.contracts.utils.pre.PaymentIdPositive
 import ru.finpact.contracts.utils.pre.PaymentsSearchQueryValid
 import ru.finpact.contracts.utils.pre.TransferRequestValid
 import ru.finpact.dto.gettransfers.PaymentDetailsResponse
+import ru.finpact.dto.refunds.RefundResponse
 import ru.finpact.dto.searchpayments.PaymentsSearchRequest
 import ru.finpact.dto.searchpayments.PaymentsSearchResponse
 import ru.finpact.dto.transfers.CreateTransferRequest
@@ -46,4 +47,13 @@ interface PaymentService {
         PaymentsSearchResponseValid::class
     )
     fun searchPayments(ownerId: Long, query: PaymentsSearchRequest): PaymentsSearchResponse
+
+    @Pre(
+        OwnerIdPositive::class,
+        PaymentIdPositive::class
+    )
+    @Post(
+        ResultNotNull::class,
+        RefundResponseValid::class)
+    fun createRefund(ownerId: Long, paymentId: Long): RefundResponse
 }

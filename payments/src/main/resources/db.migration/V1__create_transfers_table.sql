@@ -22,3 +22,35 @@ CREATE INDEX IF NOT EXISTS ix_transfers_to_account ON transfers(to_account_id);
 CREATE INDEX IF NOT EXISTS ix_transfers_initiated_by ON transfers(initiated_by);
 CREATE INDEX IF NOT EXISTS ix_transfers_created_at ON transfers(created_at);
 CREATE INDEX IF NOT EXISTS ix_transfers_status ON transfers(status);
+
+-- migration
+ALTER TABLE transfers
+    ADD COLUMN IF NOT EXISTS kind VARCHAR(16) NOT NULL DEFAULT 'TRANSFER';
+
+ALTER TABLE transfers
+    ADD COLUMN IF NOT EXISTS refund_of BIGINT;
+
+DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'transfers_kind_chk'
+        ) THEN
+            ALTER TABLE transfers
+                ADD CONSTRAINT transfers_kind_chk CHECK (kind IN ('TRANSFER', 'REFUND'));
+        END IF;
+    END $$;
+
+DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'transfers_refund_fk'
+        ) THEN
+            ALTER TABLE transfers
+                ADD CONSTRAINT transfers_refund_fk
+                    FOREIGN KEY (refund_of) REFERENCES transfers(id) ON UPDATE CASCADE;
+        END IF;
+    END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_transfers_refund_of
+    ON transfers(refund_of)
+    WHERE refund_of IS NOT NULL;
