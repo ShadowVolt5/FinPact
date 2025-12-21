@@ -2,14 +2,17 @@ package ru.finpact.domain.impl
 
 import ru.finpact.auth.AuthPrincipal
 import ru.finpact.auth.service.TokenAuthService
+import ru.finpact.contracts.annotations.Invariants
 import ru.finpact.contracts.core.ContractViolation
 import ru.finpact.contracts.ports.SubjectExistencePort
+import ru.finpact.contracts.utils.invariants.StatelessServiceInvariant
 import ru.finpact.jwt.JwtService
 
 /**
  * Общая реализация контрактного сервиса аутентификации.
  * Ничего не знает о конкретной БД, работает через SubjectExistencePort.
  */
+@Invariants(StatelessServiceInvariant::class)
 class TokenAuthServiceImpl(
     private val subjectPort: SubjectExistencePort
 ) : TokenAuthService {
@@ -21,7 +24,7 @@ class TokenAuthServiceImpl(
         val email = JwtService.extractEmailFromToken(token)
 
         if (!subjectPort.subjectExists(userId)) {
-            throw ContractViolation("subject does not exist")
+            throw ContractViolation.unauthorized("invalid token")
         }
 
         return AuthPrincipal(
@@ -33,7 +36,7 @@ class TokenAuthServiceImpl(
     private fun extractBearerToken(header: String): String =
         header.removePrefix("Bearer").trim().also {
             if (it.isEmpty()) {
-                throw ContractViolation("Bearer token must not be empty")
+                throw ContractViolation.unauthorized("Bearer token must not be empty")
             }
         }
 }

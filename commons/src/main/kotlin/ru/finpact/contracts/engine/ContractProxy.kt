@@ -75,9 +75,9 @@ object ContractProxy {
                 } catch (e: ContractViolation) {
                     throw e
                 } catch (t: Throwable) {
-                    throw ContractViolation(
-                        "$phase failed in ${ctx.method.declaringClass.simpleName}.${ctx.method.name}: " +
-                                (t.message ?: t::class.java.name)
+                    throw ContractViolation.internal(
+                        "$phase failed in ${ctx.method.declaringClass.simpleName}.${ctx.method.name}",
+                        t
                     )
                 }
             }

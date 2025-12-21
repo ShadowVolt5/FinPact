@@ -1,38 +1,43 @@
 package ru.finpact.contracts.utils.pre
 
-import ru.finpact.contracts.core.ContractContext
-import ru.finpact.contracts.core.ContractViolation
-import ru.finpact.contracts.core.Precondition
+import ru.finpact.contracts.core.*
 import java.math.BigDecimal
+import kotlin.math.max
 import kotlin.reflect.full.memberProperties
 
 class DepositRequestValid : Precondition {
 
+    private val moneyRegex = Regex("^\\d+(?:\\.\\d{1,4})?$")
+
     override fun verify(ctx: ContractContext) {
-        val dto = ctx.args.getOrNull(2)
-            ?: throw ContractViolation("request must be provided")
+        val dto = ctx.arg<Any>("request")
+        val k = dto::class
 
-        val kClass = dto::class
-
-        val amountRaw = kClass.memberProperties
+        val amountRaw = k.memberProperties
             .firstOrNull { it.name == "amount" }
-            ?.getter
-            ?.call(dto) as? String
-            ?: throw ContractViolation("amount must be provided")
+            ?.getter?.call(dto) as? String
+            ?: throw ContractViolation.badRequest("amount must be provided")
 
-        val amountTrimmed = amountRaw.trim()
-        if (amountTrimmed.isEmpty()) {
-            throw ContractViolation("amount must not be blank")
+        val s = amountRaw.trim()
+        if (s.isEmpty()) throw ContractViolation.badRequest("amount must not be blank")
+        if (!moneyRegex.matches(s)) throw ContractViolation.badRequest("amount must be plain decimal with scale <= 4")
+
+        val v = try { BigDecimal(s) } catch (_: Throwable) {
+            throw ContractViolation.badRequest("amount must be a valid decimal number")
         }
 
-        val amount = try {
-            BigDecimal(amountTrimmed)
-        } catch (_: NumberFormatException) {
-            throw ContractViolation("amount must be a valid decimal number")
-        }
+        if (v <= BigDecimal.ZERO) throw ContractViolation.badRequest("amount must be positive")
+        if (v.scale() > 4) throw ContractViolation.badRequest("amount scale must be <= 4")
 
-        if (amount <= BigDecimal.ZERO) {
-            throw ContractViolation("amount must be positive")
+        val integerDigits = max(0, v.precision() - v.scale())
+        if (integerDigits > 15) throw ContractViolation.badRequest("amount integer digits must be <= 15")
+
+        val description = k.memberProperties
+            .firstOrNull { it.name == "description" }
+            ?.getter?.call(dto) as? String?
+
+        if (description != null && description.length > 255) {
+            throw ContractViolation.badRequest("description is too long (max 255)")
         }
     }
 }

@@ -1,17 +1,10 @@
 package ru.finpact.contracts.utils.pre
 
-import ru.finpact.contracts.core.ContractContext
-import ru.finpact.contracts.core.ContractViolation
-import ru.finpact.contracts.core.Precondition
+import ru.finpact.contracts.core.*
 
 class AccountIdPositive : Precondition {
     override fun verify(ctx: ContractContext) {
-        val accountId = ctx.args.getOrNull(1) as? Long
-            ?: throw ContractViolation("accountId must be provided")
-
-        if (accountId <= 0L) {
-            throw ContractViolation("accountId must be positive")
-        }
+        val accountId = ctx.arg<Long>("accountId")
+        if (accountId <= 0L) throw ContractViolation.badRequest("accountId must be positive")
     }
 }
-
