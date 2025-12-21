@@ -10,8 +10,8 @@ import ru.finpact.dto.login.UserView
 import ru.finpact.dto.register.RegisterRequest
 import ru.finpact.dto.register.RegisterResponse
 import ru.finpact.dto.sql.PgSqlState
-import ru.finpact.jwt.JwtService
 import ru.finpact.infra.repository.AuthRepository
+import ru.finpact.jwt.JwtService
 import java.sql.SQLException
 
 class AuthServiceImpl(
@@ -39,7 +39,7 @@ class AuthServiceImpl(
             )
         } catch (e: SQLException) {
             if (e.sqlState == PgSqlState.UNIQUE_VIOLATION) {
-                throw ContractViolation("email is already taken")
+                throw ContractViolation.conflict("email is already taken")
             }
             throw e
         }
@@ -51,10 +51,10 @@ class AuthServiceImpl(
     override fun login(request: LoginRequest): LoginResponse {
         val email = request.email.trim()
         val user = authRepository.findUserByEmail(email)
-            ?: throw ContractViolation("invalid email credential")
+            ?: throw ContractViolation.unauthorized("invalid credentials")
 
         val isOk = PasswordHasher.verify(request.password, user.password)
-        if (!isOk) throw ContractViolation("invalid password credential")
+        if (!isOk) throw ContractViolation.unauthorized("invalid credentials")
 
         val token = JwtService.generateJwtToken(
             userId = user.id,

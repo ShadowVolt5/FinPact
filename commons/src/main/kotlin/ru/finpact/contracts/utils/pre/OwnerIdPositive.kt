@@ -1,16 +1,10 @@
 package ru.finpact.contracts.utils.pre
 
-import ru.finpact.contracts.core.ContractContext
-import ru.finpact.contracts.core.ContractViolation
-import ru.finpact.contracts.core.Precondition
+import ru.finpact.contracts.core.*
 
 class OwnerIdPositive : Precondition {
     override fun verify(ctx: ContractContext) {
-        val ownerId = ctx.args.getOrNull(0) as? Long
-            ?: throw ContractViolation("ownerId must be provided")
-
-        if (ownerId <= 0L) {
-            throw ContractViolation("ownerId must be positive")
-        }
+        val ownerId = ctx.arg<Long>("ownerId")
+        if (ownerId <= 0L) throw ContractViolation.badRequest("ownerId must be positive")
     }
 }

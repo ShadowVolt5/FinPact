@@ -1,11 +1,11 @@
 package ru.finpact.jwt
 
 import kotlinx.serialization.json.*
+import ru.finpact.contracts.core.ContractViolation
 import java.time.Instant
 import java.util.Base64
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
-import ru.finpact.contracts.core.ContractViolation
 
 object JwtService {
 
@@ -49,7 +49,7 @@ object JwtService {
 
     fun verifyAndDecodeClaims(jwtToken: String): Map<String, Any?> {
         val parts = jwtToken.split('.')
-        if (parts.size != 3) throw ContractViolation("invalid token")
+        if (parts.size != 3) throw ContractViolation.unauthorized("invalid token")
 
         val headerBase64 = parts[0]
         val payloadBase64 = parts[1]
@@ -58,22 +58,26 @@ object JwtService {
         val expectedSignatureBytes = hmacSha256("$headerBase64.$payloadBase64")
         val actualSignatureBytes = base64UrlDecodeToBytes(signatureBase64)
         if (!constantTimeEqualsBytes(expectedSignatureBytes, actualSignatureBytes)) {
-            throw ContractViolation("invalid token")
+            throw ContractViolation.unauthorized("invalid token")
         }
 
         val payloadJsonString = base64UrlDecodeToString(payloadBase64)
-        val payload = jsonCodec.parseToJsonElement(payloadJsonString).jsonObject
+        val payload = try {
+            jsonCodec.parseToJsonElement(payloadJsonString).jsonObject
+        } catch (_: Throwable) {
+            throw ContractViolation.unauthorized("invalid token")
+        }
 
         val now = Instant.now().epochSecond
-        val exp = payload["exp"]?.jsonPrimitive?.longOrNull ?: throw ContractViolation("invalid token")
-        if (now >= exp) throw ContractViolation("token expired")
+        val exp = payload["exp"]?.jsonPrimitive?.longOrNull ?: throw ContractViolation.unauthorized("invalid token")
+        if (now >= exp) throw ContractViolation.unauthorized("token expired")
 
-        val iss = payload["iss"]?.jsonPrimitive?.content ?: throw ContractViolation("invalid token")
-        if (iss != tokenIssuer) throw ContractViolation("invalid token")
+        val iss = payload["iss"]?.jsonPrimitive?.content ?: throw ContractViolation.unauthorized("invalid token")
+        if (iss != tokenIssuer) throw ContractViolation.unauthorized("invalid token")
 
         tokenAudience?.let { expectedAud ->
-            val aud = payload["aud"]?.jsonPrimitive?.content ?: throw ContractViolation("invalid token")
-            if (aud != expectedAud) throw ContractViolation("invalid token")
+            val aud = payload["aud"]?.jsonPrimitive?.content ?: throw ContractViolation.unauthorized("invalid token")
+            if (aud != expectedAud) throw ContractViolation.unauthorized("invalid token")
         }
 
         val sub = payload["sub"]?.jsonPrimitive?.content
@@ -90,11 +94,11 @@ object JwtService {
 
     fun extractUserIdFromToken(jwtToken: String): Long =
         verifyAndDecodeClaims(jwtToken)["sub"]?.toString()?.toLongOrNull()
-            ?: throw ContractViolation("invalid token")
+            ?: throw ContractViolation.unauthorized("invalid token")
 
     fun extractEmailFromToken(jwtToken: String): String =
         verifyAndDecodeClaims(jwtToken)["email"]?.toString()
-            ?: throw ContractViolation("invalid token")
+            ?: throw ContractViolation.unauthorized("invalid token")
 
     private fun buildPayload(
         userId: Long,

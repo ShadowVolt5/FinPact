@@ -1,8 +1,6 @@
 package ru.finpact.contracts.utils.pre
 
-import ru.finpact.contracts.core.ContractContext
-import ru.finpact.contracts.core.ContractViolation
-import ru.finpact.contracts.core.Precondition
+import ru.finpact.contracts.core.*
 import ru.finpact.model.Currency
 import java.time.Instant
 import kotlin.reflect.full.memberProperties
@@ -12,7 +10,7 @@ class PaymentsSearchQueryValid : Precondition {
     private val allowedStatuses = setOf("PENDING", "COMPLETED", "FAILED")
 
     override fun verify(ctx: ContractContext) {
-        val q = ctx.args.getOrNull(1) ?: throw ContractViolation("query must be provided")
+        val q = ctx.arg<Any>("query")
 
         val status = q.readStringOrNull("status")?.trim()?.takeIf { it.isNotEmpty() }
         val fromId = q.readLongOrNull("fromAccountId")
@@ -23,35 +21,35 @@ class PaymentsSearchQueryValid : Precondition {
         val limit = q.readIntOrNull("limit") ?: 50
         val offset = q.readLongOrNull("offset") ?: 0L
 
-        if (limit !in 1..200) throw ContractViolation("limit must be in 1..200")
-        if (offset < 0L) throw ContractViolation("offset must be >= 0")
+        if (limit !in 1..200) throw ContractViolation.badRequest("limit must be in 1..200")
+        if (offset < 0L) throw ContractViolation.badRequest("offset must be >= 0")
 
-        if (status != null) {
-            if (status !in allowedStatuses) throw ContractViolation("status is invalid")
+        if (status != null && status !in allowedStatuses) {
+            throw ContractViolation.badRequest("status is invalid")
         }
 
-        if (fromId != null && fromId <= 0L) throw ContractViolation("fromAccountId must be positive")
-        if (toId != null && toId <= 0L) throw ContractViolation("toAccountId must be positive")
+        if (fromId != null && fromId <= 0L) throw ContractViolation.badRequest("fromAccountId must be positive")
+        if (toId != null && toId <= 0L) throw ContractViolation.badRequest("toAccountId must be positive")
 
         if (currency != null) {
             if (!(currency.length == 3 && currency.all { it.isLetter() } && currency == currency.uppercase())) {
-                throw ContractViolation("currency must be 3-letter uppercase code")
+                throw ContractViolation.badRequest("currency must be 3-letter uppercase code")
             }
             if (!Currency.isSupported(currency)) {
                 val allowed = Currency.supportedCodes().joinToString(",")
-                throw ContractViolation("currency '$currency' is not supported (allowed: $allowed)")
+                throw ContractViolation.badRequest("currency '$currency' is not supported (allowed: $allowed)")
             }
         }
 
         val fromInstant = createdFrom?.let {
-            try { Instant.parse(it) } catch (_: Throwable) { throw ContractViolation("createdFrom must be ISO-8601 instant") }
+            try { Instant.parse(it) } catch (_: Throwable) { throw ContractViolation.badRequest("createdFrom must be ISO-8601 instant") }
         }
         val toInstant = createdTo?.let {
-            try { Instant.parse(it) } catch (_: Throwable) { throw ContractViolation("createdTo must be ISO-8601 instant") }
+            try { Instant.parse(it) } catch (_: Throwable) { throw ContractViolation.badRequest("createdTo must be ISO-8601 instant") }
         }
 
         if (fromInstant != null && toInstant != null && fromInstant.isAfter(toInstant)) {
-            throw ContractViolation("createdFrom must be <= createdTo")
+            throw ContractViolation.badRequest("createdFrom must be <= createdTo")
         }
     }
 

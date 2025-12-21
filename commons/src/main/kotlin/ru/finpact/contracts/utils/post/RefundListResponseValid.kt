@@ -16,13 +16,13 @@ class RefundListResponseValid : Postcondition {
     private val allowedStatuses = setOf("PENDING", "COMPLETED", "FAILED")
 
     override fun verify(ctx: ContractContext) {
-        val res = ctx.result ?: throw ContractViolation("result must not be null")
+        val res = ctx.result ?: throw ContractViolation.internal("result must not be null")
 
         val itemsAny = readAny(res::class, res, "items")
-        if (itemsAny !is List<*>) throw ContractViolation("result.items must be a list")
+        if (itemsAny !is List<*>) throw ContractViolation.internal("result.items must be a list")
 
         for ((idx, item) in itemsAny.withIndex()) {
-            val it = item ?: throw ContractViolation("result.items[$idx] must not be null")
+            val it = item ?: throw ContractViolation.internal("result.items[$idx] must not be null")
             validateRefund(it, idx)
         }
     }
@@ -31,44 +31,44 @@ class RefundListResponseValid : Postcondition {
         val k = obj::class
 
         val refundPaymentId = readLong(k, obj, "refundPaymentId")
-        if (refundPaymentId <= 0L) throw ContractViolation("result.items[$idx].refundPaymentId must be positive")
+        if (refundPaymentId <= 0L) throw ContractViolation.internal("result.items[$idx].refundPaymentId must be positive")
 
         val originalPaymentId = readLong(k, obj, "originalPaymentId")
-        if (originalPaymentId <= 0L) throw ContractViolation("result.items[$idx].originalPaymentId must be positive")
+        if (originalPaymentId <= 0L) throw ContractViolation.internal("result.items[$idx].originalPaymentId must be positive")
 
         val status = readString(k, obj, "status").trim()
-        if (status.isEmpty()) throw ContractViolation("result.items[$idx].status must not be blank")
-        if (status !in allowedStatuses) throw ContractViolation("result.items[$idx].status is invalid")
+        if (status.isEmpty()) throw ContractViolation.internal("result.items[$idx].status must not be blank")
+        if (status !in allowedStatuses) throw ContractViolation.internal("result.items[$idx].status is invalid")
 
         val amount = parseMoney(readString(k, obj, "amount"), "result.items[$idx].amount")
-        if (amount <= BigDecimal.ZERO) throw ContractViolation("result.items[$idx].amount must be positive")
+        if (amount <= BigDecimal.ZERO) throw ContractViolation.internal("result.items[$idx].amount must be positive")
 
         val currency = readString(k, obj, "currency").trim()
-        if (!isCurrencyUpper3(currency)) throw ContractViolation("result.items[$idx].currency must be 3-letter uppercase code")
+        if (!isCurrencyUpper3(currency)) throw ContractViolation.internal("result.items[$idx].currency must be 3-letter uppercase code")
         if (!Currency.isSupported(currency)) {
             val allowed = Currency.supportedCodes().joinToString(",")
-            throw ContractViolation("result.items[$idx].currency '$currency' is not supported (allowed: $allowed)")
+            throw ContractViolation.internal("result.items[$idx].currency '$currency' is not supported (allowed: $allowed)")
         }
 
         val createdAt = readString(k, obj, "createdAt").trim()
-        if (createdAt.isEmpty()) throw ContractViolation("result.items[$idx].createdAt must not be blank")
+        if (createdAt.isEmpty()) throw ContractViolation.internal("result.items[$idx].createdAt must not be blank")
         try { Instant.parse(createdAt) } catch (_: Throwable) {
-            throw ContractViolation("result.items[$idx].createdAt must be ISO-8601 instant")
+            throw ContractViolation.internal("result.items[$idx].createdAt must be ISO-8601 instant")
         }
     }
 
     private fun parseMoney(raw: String, field: String): BigDecimal {
         val s = raw.trim()
-        if (s.isEmpty()) throw ContractViolation("$field must not be blank")
-        if (!moneyRegex.matches(s)) throw ContractViolation("$field must be plain decimal with scale <= 4")
+        if (s.isEmpty()) throw ContractViolation.internal("$field must not be blank")
+        if (!moneyRegex.matches(s)) throw ContractViolation.internal("$field must be plain decimal with scale <= 4")
 
         val v = try { BigDecimal(s) } catch (_: Throwable) {
-            throw ContractViolation("$field must be a valid decimal number")
+            throw ContractViolation.internal("$field must be a valid decimal number")
         }
 
-        if (v.scale() > 4) throw ContractViolation("$field scale must be <= 4")
+        if (v.scale() > 4) throw ContractViolation.internal("$field scale must be <= 4")
         val integerDigits = max(0, v.precision() - v.scale())
-        if (integerDigits > 15) throw ContractViolation("$field integer digits must be <= 15")
+        if (integerDigits > 15) throw ContractViolation.internal("$field integer digits must be <= 15")
         return v
     }
 
@@ -77,13 +77,13 @@ class RefundListResponseValid : Postcondition {
 
     private fun readAny(k: KClass<*>, obj: Any, name: String): Any =
         k.memberProperties.firstOrNull { it.name == name }?.getter?.call(obj)
-            ?: throw ContractViolation("result.$name must be provided")
+            ?: throw ContractViolation.internal("result.$name must be provided")
 
     private fun readString(k: KClass<*>, obj: Any, name: String): String =
         (k.memberProperties.firstOrNull { it.name == name }?.getter?.call(obj) as? String)
-            ?: throw ContractViolation("result.$name must be provided")
+            ?: throw ContractViolation.internal("result.$name must be provided")
 
     private fun readLong(k: KClass<*>, obj: Any, name: String): Long =
         (k.memberProperties.firstOrNull { it.name == name }?.getter?.call(obj) as? Long)
-            ?: throw ContractViolation("result.$name must be provided")
+            ?: throw ContractViolation.internal("result.$name must be provided")
 }

@@ -8,18 +8,18 @@ import kotlin.reflect.full.memberProperties
 
 class EmailUnique : Precondition {
     override fun verify(ctx: ContractContext) {
-        val dto = ctx.args.getOrNull(0) ?: throw ContractViolation("request must not be null")
+        val dto = ctx.args.getOrNull(0) ?: throw ContractViolation.badRequest("request must not be null")
 
         val email = dto::class.memberProperties
             .firstOrNull { it.name == "email" }
             ?.getter?.call(dto) as? String
-            ?: throw ContractViolation("email must be provided")
+            ?: throw ContractViolation.badRequest("email must be provided")
 
         val port = ctx.target as? EmailUniquenessPort
-            ?: throw IllegalStateException("Target does not implement EmailUniquenessPort")
+            ?: throw ContractViolation.internal("Target does not implement EmailUniquenessPort")
 
         if (!port.isEmailFree(email.trim())) {
-            throw ContractViolation("email is already taken")
+            throw ContractViolation.conflict("email is already taken")
         }
     }
 }
