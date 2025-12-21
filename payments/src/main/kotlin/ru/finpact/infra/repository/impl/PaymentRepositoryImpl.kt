@@ -31,16 +31,19 @@ class PaymentRepositoryImpl : PaymentRepository {
             val from = if (a1.id == fromAccountId) a1 else a2
             val to = if (a1.id == toAccountId) a1 else a2
 
-            val reason: String? = when {
-                !from.isActive -> "account is not active"
-                !to.isActive -> "account is not active"
-                from.ownerId != initiatedBy -> "account not found"
-                from.currency.trim().uppercase() != to.currency.trim().uppercase() -> "currency mismatch"
-                from.balance < normalizedAmount -> "insufficient funds"
-                else -> null
+            if (from.ownerId != initiatedBy) {
+                return@withTransaction failNoInsert("account not found")
             }
 
             val currency = from.currency.trim().uppercase()
+
+            val reason: String? = when {
+                !from.isActive -> "account is not active"
+                !to.isActive -> "account not found"
+                from.currency.trim().uppercase() != to.currency.trim().uppercase() -> "account not found"
+                from.balance < normalizedAmount -> "insufficient funds"
+                else -> null
+            }
 
             if (reason != null) {
                 val failed = insertTransfer(
@@ -115,6 +118,61 @@ class PaymentRepositoryImpl : PaymentRepository {
                     if (!rs.next()) return@withConnection null
                     mapPaymentDetails(rs)
                 }
+            }
+        }
+
+    override fun searchTransfers(
+        initiatedBy: Long,
+        filter: TransferSearchFilter,
+        limit: Int,
+        offset: Long,
+    ): TransferSearchPage =
+        Database.withConnection { conn ->
+            val sql = buildString {
+                append(
+                    """
+                    SELECT id, from_account_id, to_account_id, amount, currency, status, description, initiated_by, created_at
+                    FROM transfers
+                    WHERE initiated_by = ?
+                    """.trimIndent()
+                )
+
+                if (filter.status != null) append(" AND status = ?")
+                if (filter.fromAccountId != null) append(" AND from_account_id = ?")
+                if (filter.toAccountId != null) append(" AND to_account_id = ?")
+                if (filter.currency != null) append(" AND currency = ?")
+                if (filter.createdFrom != null) append(" AND created_at >= ?")
+                if (filter.createdTo != null) append(" AND created_at <= ?")
+
+                append(" ORDER BY created_at DESC, id DESC")
+                append(" LIMIT ? OFFSET ?")
+            }
+
+            val fetchLimit = limit + 1
+
+            conn.prepareStatement(sql).use { ps ->
+                var i = 1
+                ps.setLong(i++, initiatedBy)
+
+                filter.status?.let { ps.setString(i++, it.name) }
+                filter.fromAccountId?.let { ps.setLong(i++, it) }
+                filter.toAccountId?.let { ps.setLong(i++, it) }
+                filter.currency?.let { ps.setString(i++, it.trim().uppercase()) }
+                filter.createdFrom?.let { ps.setTimestamp(i++, java.sql.Timestamp.from(it)) }
+                filter.createdTo?.let { ps.setTimestamp(i++, java.sql.Timestamp.from(it)) }
+
+                ps.setInt(i++, fetchLimit)
+                ps.setLong(i++, offset)
+
+                val rows = mutableListOf<Transfer>()
+                ps.executeQuery().use { rs ->
+                    while (rs.next()) rows += mapTransferRow(rs)
+                }
+
+                val hasMore = rows.size > limit
+                val items = if (hasMore) rows.take(limit) else rows
+
+                TransferSearchPage(items = items, hasMore = hasMore)
             }
         }
 
@@ -236,6 +294,27 @@ class PaymentRepositoryImpl : PaymentRepository {
                 )
             }
         }
+
+    private fun mapTransferRow(rs: ResultSet): Transfer {
+        val statusRaw = rs.getString("status")
+        val status = try {
+            PaymentStatus.valueOf(statusRaw)
+        } catch (_: Throwable) {
+            throw ContractViolation("invalid payment status")
+        }
+
+        return Transfer(
+            id = rs.getLong("id"),
+            fromAccountId = rs.getLong("from_account_id"),
+            toAccountId = rs.getLong("to_account_id"),
+            amount = rs.getBigDecimal("amount"),
+            currency = rs.getString("currency").trim().uppercase(),
+            status = status,
+            description = rs.getString("description"),
+            initiatedBy = rs.getLong("initiated_by"),
+            createdAt = rs.getTimestamp("created_at").toInstant(),
+        )
+    }
 
     private fun mapPaymentDetails(rs: ResultSet): PaymentDetails {
         val id = rs.getLong("id")

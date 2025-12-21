@@ -7,10 +7,16 @@ import ru.finpact.domain.PaymentService
 import ru.finpact.dto.gettransfers.CounterpartyAccountView
 import ru.finpact.dto.gettransfers.OwnerAccountSliceView
 import ru.finpact.dto.gettransfers.PaymentDetailsResponse
+import ru.finpact.dto.searchpayments.PaymentListItemResponse
+import ru.finpact.dto.searchpayments.PaymentsSearchRequest
+import ru.finpact.dto.searchpayments.PaymentsSearchResponse
 import ru.finpact.dto.transfers.CreateTransferRequest
 import ru.finpact.dto.transfers.TransferResponse
 import ru.finpact.infra.repository.PaymentRepository
+import ru.finpact.model.PaymentStatus
+import ru.finpact.model.TransferSearchFilter
 import java.math.BigDecimal
+import java.time.Instant
 
 @Invariants(StatelessServiceInvariant::class)
 class PaymentServiceImpl(
@@ -63,6 +69,44 @@ class PaymentServiceImpl(
             currency = details.currency,
             description = details.description,
             createdAt = details.createdAt.toString(),
+        )
+    }
+
+    override fun searchPayments(ownerId: Long, query: PaymentsSearchRequest): PaymentsSearchResponse {
+        val status = query.status?.trim()?.takeIf { it.isNotEmpty() }?.let { PaymentStatus.valueOf(it) }
+
+        val filter = TransferSearchFilter(
+            status = status,
+            fromAccountId = query.fromAccountId,
+            toAccountId = query.toAccountId,
+            currency = query.currency?.trim()?.takeIf { it.isNotEmpty() },
+            createdFrom = query.createdFrom?.trim()?.takeIf { it.isNotEmpty() }?.let(Instant::parse),
+            createdTo = query.createdTo?.trim()?.takeIf { it.isNotEmpty() }?.let(Instant::parse),
+        )
+
+        val page = paymentRepository.searchTransfers(
+            initiatedBy = ownerId,
+            filter = filter,
+            limit = query.limit,
+            offset = query.offset,
+        )
+
+        return PaymentsSearchResponse(
+            items = page.items.map { t ->
+                PaymentListItemResponse(
+                    id = t.id,
+                    status = t.status.name,
+                    fromAccountId = t.fromAccountId,
+                    toAccountId = t.toAccountId,
+                    amount = t.amount.stripTrailingZeros().toPlainString(),
+                    currency = t.currency,
+                    description = t.description,
+                    createdAt = t.createdAt.toString(),
+                )
+            },
+            limit = query.limit,
+            offset = query.offset,
+            hasMore = page.hasMore,
         )
     }
 }
