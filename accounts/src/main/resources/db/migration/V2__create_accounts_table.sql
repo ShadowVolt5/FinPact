@@ -10,10 +10,10 @@ CREATE TABLE accounts (
      CONSTRAINT accounts_currency_chk CHECK (char_length(currency) = 3),
 
      CONSTRAINT accounts_owner_fk
-        FOREIGN KEY (owner_id)
-        REFERENCES users(id)
-        ON UPDATE CASCADE
-        ON DELETE CASCADE
+         FOREIGN KEY (owner_id)
+             REFERENCES auth.users(id)
+             ON UPDATE CASCADE
+             ON DELETE CASCADE
 );
 
 CREATE INDEX ix_accounts_owner ON accounts(owner_id);

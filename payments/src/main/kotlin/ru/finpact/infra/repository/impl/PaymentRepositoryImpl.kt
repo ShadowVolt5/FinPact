@@ -180,8 +180,8 @@ class PaymentRepositoryImpl : PaymentRepository {
                     at.currency AS to_currency
 
                 FROM transfers t
-                JOIN accounts af ON af.id = t.from_account_id
-                JOIN accounts at ON at.id = t.to_account_id
+                JOIN accounts.accounts af ON af.id = t.from_account_id
+                JOIN accounts.accounts at ON at.id = t.to_account_id
                 WHERE t.id = ? AND t.initiated_by = ?
                 LIMIT 1
                 """.trimIndent()
@@ -306,7 +306,7 @@ class PaymentRepositoryImpl : PaymentRepository {
         conn.prepareStatement(
             """
             SELECT id, owner_id, currency, balance, is_active
-            FROM accounts
+            FROM accounts.accounts
             WHERE id = ?
             FOR UPDATE
             """.trimIndent()
@@ -383,7 +383,7 @@ class PaymentRepositoryImpl : PaymentRepository {
     private fun withdraw(conn: Connection, accountId: Long, amount: BigDecimal) {
         conn.prepareStatement(
             """
-            UPDATE accounts
+            UPDATE accounts.accounts
             SET balance = balance - ?
             WHERE id = ?
             """.trimIndent()
@@ -397,7 +397,7 @@ class PaymentRepositoryImpl : PaymentRepository {
     private fun deposit(conn: Connection, accountId: Long, amount: BigDecimal) {
         conn.prepareStatement(
             """
-            UPDATE accounts
+            UPDATE accounts.accounts
             SET balance = balance + ?
             WHERE id = ?
             """.trimIndent()

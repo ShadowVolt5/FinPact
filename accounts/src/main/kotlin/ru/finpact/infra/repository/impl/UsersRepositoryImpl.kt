@@ -10,7 +10,7 @@ class UsersRepositoryImpl : UsersRepository {
             conn.prepareStatement(
                 """
                 SELECT 1
-                FROM users
+                FROM auth.users
                 WHERE id = ?
                 LIMIT 1
                 """.trimIndent()
