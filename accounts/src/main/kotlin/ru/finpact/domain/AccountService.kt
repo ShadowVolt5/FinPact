@@ -2,14 +2,15 @@ package ru.finpact.domain
 
 import ru.finpact.contracts.annotations.Post
 import ru.finpact.contracts.annotations.Pre
+import ru.finpact.contracts.utils.post.AccountClosedWithZeroBalance
 import ru.finpact.contracts.utils.post.AccountOwnedByCaller
 import ru.finpact.contracts.utils.post.ResultNotNull
 import ru.finpact.contracts.utils.pre.AccountIdPositive
 import ru.finpact.contracts.utils.pre.DepositRequestValid
 import ru.finpact.contracts.utils.pre.OpenAccountRequestValid
 import ru.finpact.contracts.utils.pre.OwnerIdPositive
-import ru.finpact.dto.created.OpenAccountRequest
 import ru.finpact.dto.common.AccountResponse
+import ru.finpact.dto.created.OpenAccountRequest
 import ru.finpact.dto.deposits.DepositRequest
 
 interface AccountService {
@@ -38,4 +39,15 @@ interface AccountService {
     )
     @Post(ResultNotNull::class)
     fun deposit(ownerId: Long, accountId: Long, request: DepositRequest): AccountResponse
+
+    @Pre(
+        AccountIdPositive::class,
+        OwnerIdPositive::class,
+    )
+    @Post(
+        ResultNotNull::class,
+        AccountOwnedByCaller::class,
+        AccountClosedWithZeroBalance::class,
+    )
+    fun closeAccount(accountId: Long, ownerId: Long): AccountResponse
 }
