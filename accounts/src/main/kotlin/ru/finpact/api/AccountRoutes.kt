@@ -71,6 +71,18 @@ fun Application.accountRoutes() {
 
                 call.respond(HttpStatusCode.OK, result)
             }
+
+            delete("/{accountId}/close") {
+                val principal = call.requirePrincipal(tokenAuthService)
+                val accountId = call.requirePathLong("accountId", "account id")
+
+                val result: AccountResponse = accountService.closeAccount(
+                    accountId = accountId,
+                    ownerId = principal.userId,
+                )
+
+                call.respond(HttpStatusCode.OK, result)
+            }
         }
     }
 }

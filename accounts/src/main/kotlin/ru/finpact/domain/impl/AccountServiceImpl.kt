@@ -61,6 +61,28 @@ class AccountServiceImpl(
         val updated = accountRepository.deposit(accountId = accountId, amount = amount)
         return updated.toDto()
     }
+
+    override fun closeAccount(accountId: Long, ownerId: Long): AccountResponse {
+        val account = accountRepository.findById(accountId)
+            ?: throw ContractViolation.notFound("account not found")
+
+        if (account.ownerId != ownerId) {
+            throw ContractViolation.notFound("account not found")
+        }
+
+        if (account.balance.compareTo(BigDecimal.ZERO) != 0) {
+            throw ContractViolation.conflict("account balance must be zero to close")
+        }
+
+        if (!account.isActive) {
+            return account.toDto()
+        }
+
+        val closed = accountRepository.closeAccount(accountId)
+            ?: throw ContractViolation.conflict("account balance must be zero to close")
+
+        return closed.toDto()
+    }
 }
 
 private fun ru.finpact.model.Account.toDto() = AccountResponse(

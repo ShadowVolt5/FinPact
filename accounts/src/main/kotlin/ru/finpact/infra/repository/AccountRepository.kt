@@ -15,4 +15,6 @@ interface AccountRepository {
     fun findById(id: Long): Account?
 
     fun deposit(accountId: Long, amount: BigDecimal): Account
+
+    fun closeAccount(accountId: Long): Account?
 }

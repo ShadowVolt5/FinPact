@@ -25,11 +25,7 @@ class AccountRepositoryImpl : AccountRepository {
             ).use { ps ->
                 ps.setLong(1, ownerId)
                 ps.setString(2, currency)
-                if (alias == null) {
-                    ps.setNull(3, Types.VARCHAR)
-                } else {
-                    ps.setString(3, alias)
-                }
+                if (alias == null) ps.setNull(3, Types.VARCHAR) else ps.setString(3, alias)
                 ps.setBigDecimal(4, initialBalance)
 
                 ps.executeQuery().use { rs ->
@@ -72,6 +68,25 @@ class AccountRepositoryImpl : AccountRepository {
                 ps.executeQuery().use { rs ->
                     require(rs.next()) { "UPDATE accounts did not return row" }
                     mapAccount(rs)
+                }
+            }
+        }
+
+    override fun closeAccount(accountId: Long): Account? =
+        Database.withTransaction { conn ->
+            conn.prepareStatement(
+                """
+                UPDATE accounts
+                SET is_active = FALSE
+                WHERE id = ?
+                  AND is_active = TRUE
+                  AND balance = 0
+                RETURNING id, owner_id, currency, alias, balance, is_active, created_at
+                """.trimIndent()
+            ).use { ps ->
+                ps.setLong(1, accountId)
+                ps.executeQuery().use { rs ->
+                    if (rs.next()) mapAccount(rs) else null
                 }
             }
         }
