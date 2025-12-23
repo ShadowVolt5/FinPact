@@ -1,0 +1,106 @@
+name: finpact
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: finpact_db
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - finpact_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "54321:5432"
+    networks: [finpact_net]
+    restart: unless-stopped
+
+  auth:
+    container_name: finpact_auth
+    build:
+      context: .
+      dockerfile: auth/Dockerfile
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_SCHEMA: auth
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    networks: [finpact_net]
+    restart: unless-stopped
+
+  accounts:
+    container_name: finpact_accounts
+    build:
+      context: .
+      dockerfile: accounts/Dockerfile
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_SCHEMA: accounts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth:
+        condition: service_started
+    ports:
+      - "8081:8081"
+    networks: [finpact_net]
+    restart: unless-stopped
+
+  payments:
+    container_name: finpact_payments
+    build:
+      context: .
+      dockerfile: payments/Dockerfile
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_SCHEMA: payments
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth:
+        condition: service_started
+    ports:
+      - "8082:8082"
+    networks: [finpact_net]
+    restart: unless-stopped
+
+  limits:
+    container_name: finpact_limits
+    build:
+      context: .
+      dockerfile: limits/Dockerfile
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_SCHEMA: limits
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth:
+        condition: service_started
+    ports:
+      - "8083:8083"
+    networks: [finpact_net]
+    restart: unless-stopped
+
+volumes:
+  finpact_db_data:
+
+networks:
+  finpact_net:
+    driver: bridge

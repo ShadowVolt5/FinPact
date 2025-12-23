@@ -3,6 +3,7 @@ package ru.finpact.infra.db
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.server.config.*
+import org.flywaydb.core.Flyway
 import java.sql.Connection
 
 object Database {
@@ -14,13 +15,31 @@ object Database {
         val driver = env("DB_DRIVER") ?: "org.postgresql.Driver"
         val user = envRequired("DB_USER")
         val password = envRequired("DB_PASSWORD")
+        val schema = env("DB_SCHEMA") ?: "public"
 
-        val jdbcUrl = env("DB_JDBC_URL") ?: run {
+        val baseJdbcUrl = env("DB_JDBC_URL") ?: run {
             val host = envRequired("DB_HOST")
             val port = env("DB_PORT") ?: "5432"
             val name = envRequired("DB_NAME")
             "jdbc:postgresql://$host:$port/$name"
         }
+
+        val jdbcUrl = when {
+            baseJdbcUrl.contains("currentSchema=") -> baseJdbcUrl
+            baseJdbcUrl.contains("?") -> "$baseJdbcUrl&currentSchema=$schema"
+            else -> "$baseJdbcUrl?currentSchema=$schema"
+        }
+
+        Flyway.configure()
+            .dataSource(jdbcUrl, user, password)
+            .locations("classpath:db/migration")
+            .defaultSchema(schema)
+            .schemas(schema)
+            .createSchemas(true)
+            .table("flyway_schema_history_$schema")
+            .baselineOnMigrate(true)
+            .load()
+            .migrate()
 
         val hc = HikariConfig().apply {
             driverClassName = driver

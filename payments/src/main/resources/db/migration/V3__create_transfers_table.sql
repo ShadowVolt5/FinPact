@@ -12,10 +12,10 @@ CREATE TABLE IF NOT EXISTS transfers (
     CONSTRAINT transfers_from_to_chk CHECK (from_account_id <> to_account_id),
     CONSTRAINT transfers_currency_chk CHECK (char_length(currency) = 3),
     CONSTRAINT transfers_status_chk CHECK (status IN ('PENDING', 'COMPLETED', 'FAILED')),
-    CONSTRAINT transfers_from_fk FOREIGN KEY (from_account_id) REFERENCES accounts(id) ON UPDATE CASCADE,
-    CONSTRAINT transfers_to_fk FOREIGN KEY (to_account_id) REFERENCES accounts(id) ON UPDATE CASCADE,
-    CONSTRAINT transfers_initiated_by_fk FOREIGN KEY (initiated_by) REFERENCES users(id) ON UPDATE CASCADE
-);
+    CONSTRAINT transfers_from_fk FOREIGN KEY (from_account_id) REFERENCES accounts.accounts(id) ON UPDATE CASCADE,
+    CONSTRAINT transfers_to_fk FOREIGN KEY (to_account_id) REFERENCES accounts.accounts(id) ON UPDATE CASCADE,
+    CONSTRAINT transfers_initiated_by_fk FOREIGN KEY (initiated_by) REFERENCES auth.users(id) ON UPDATE CASCADE
+    );
 
 CREATE INDEX IF NOT EXISTS ix_transfers_from_account ON transfers(from_account_id);
 CREATE INDEX IF NOT EXISTS ix_transfers_to_account ON transfers(to_account_id);
@@ -31,25 +31,25 @@ ALTER TABLE transfers
     ADD COLUMN IF NOT EXISTS refund_of BIGINT;
 
 DO $$
-    BEGIN
-        IF NOT EXISTS (
-            SELECT 1 FROM pg_constraint WHERE conname = 'transfers_kind_chk'
-        ) THEN
-            ALTER TABLE transfers
-                ADD CONSTRAINT transfers_kind_chk CHECK (kind IN ('TRANSFER', 'REFUND'));
-        END IF;
-    END $$;
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'transfers_kind_chk'
+    ) THEN
+ALTER TABLE transfers
+    ADD CONSTRAINT transfers_kind_chk CHECK (kind IN ('TRANSFER', 'REFUND'));
+END IF;
+END $$;
 
 DO $$
-    BEGIN
-        IF NOT EXISTS (
-            SELECT 1 FROM pg_constraint WHERE conname = 'transfers_refund_fk'
-        ) THEN
-            ALTER TABLE transfers
-                ADD CONSTRAINT transfers_refund_fk
-                    FOREIGN KEY (refund_of) REFERENCES transfers(id) ON UPDATE CASCADE;
-        END IF;
-    END $$;
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'transfers_refund_fk'
+    ) THEN
+ALTER TABLE transfers
+    ADD CONSTRAINT transfers_refund_fk
+        FOREIGN KEY (refund_of) REFERENCES transfers(id) ON UPDATE CASCADE;
+END IF;
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_transfers_refund_of
     ON transfers(refund_of)
