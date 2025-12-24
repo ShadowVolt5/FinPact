@@ -53,8 +53,8 @@ class AuthServiceImpl(
         val user = authRepository.findUserByEmail(email)
             ?: throw ContractViolation.unauthorized("invalid credentials")
 
-        val isOk = PasswordHasher.verify(request.password, user.password)
-        if (!isOk) throw ContractViolation.unauthorized("invalid credentials")
+        val ok = PasswordHasher.verify(request.password, user.password)
+        if (!ok) throw ContractViolation.unauthorized("invalid credentials")
 
         val token = JwtService.generateJwtToken(
             userId = user.id,

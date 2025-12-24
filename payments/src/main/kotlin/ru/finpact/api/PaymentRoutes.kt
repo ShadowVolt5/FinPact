@@ -19,6 +19,8 @@ import ru.finpact.dto.searchpayments.PaymentsSearchRequest
 import ru.finpact.dto.searchpayments.PaymentsSearchResponse
 import ru.finpact.dto.transfers.CreateTransferRequest
 import ru.finpact.dto.transfers.TransferResponse
+import ru.finpact.fx.impl.CbrFxRateProvider
+import ru.finpact.infra.repository.impl.LimitsRepositoryImpl
 import ru.finpact.infra.repository.impl.PaymentRepositoryImpl
 import ru.finpact.infra.repository.impl.UsersRepositoryImpl
 
@@ -30,7 +32,14 @@ fun Application.paymentRoutes() {
     val tokenAuthService: TokenAuthService =
         ContractProxy.wrap<TokenAuthService>(rawTokenAuthService)
 
-    val paymentsRepo = PaymentRepositoryImpl()
+    val limitsRepo = LimitsRepositoryImpl()
+    val fxProvider = CbrFxRateProvider()
+
+    val paymentsRepo = PaymentRepositoryImpl(
+        limitsRepository = limitsRepo,
+        fxRateProvider = fxProvider,
+    )
+
     val rawPaymentService = PaymentServiceImpl(paymentsRepo)
     val paymentService: PaymentService =
         ContractProxy.wrap<PaymentService>(rawPaymentService)
