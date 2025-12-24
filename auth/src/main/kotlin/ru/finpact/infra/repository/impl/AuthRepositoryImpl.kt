@@ -2,7 +2,9 @@ package ru.finpact.infra.repository.impl
 
 import ru.finpact.infra.db.Database
 import ru.finpact.infra.repository.AuthRepository
+import ru.finpact.limits.DefaultLimitsPolicy
 import ru.finpact.model.User
+import java.sql.Connection
 import java.sql.ResultSet
 import java.sql.Types
 
@@ -33,7 +35,7 @@ class AuthRepositoryImpl : AuthRepository {
         passwordHash: String
     ): Long =
         Database.withTransaction { conn ->
-            conn.prepareStatement(
+            val userId = conn.prepareStatement(
                 """
                 INSERT INTO users(email, first_name, middle_name, last_name, password)
                 VALUES (?, ?, ?, ?, ?)
@@ -51,6 +53,10 @@ class AuthRepositoryImpl : AuthRepository {
                     rs.getLong(1)
                 }
             }
+
+            insertDefaultLimitsProfile(conn, userId)
+
+            userId
         }
 
     override fun findUserByEmail(email: String): User? =
@@ -86,6 +92,30 @@ class AuthRepositoryImpl : AuthRepository {
                 }
             }
         }
+
+    private fun insertDefaultLimitsProfile(conn: Connection, userId: Long) {
+        val perTxn = DefaultLimitsPolicy.PER_TXN
+        val daily = DefaultLimitsPolicy.DAILY
+        val monthly = DefaultLimitsPolicy.MONTHLY
+        val currencies = DefaultLimitsPolicy.BASE_CURRENCY
+
+        conn.prepareStatement(
+            """
+            INSERT INTO limits.limits_profiles(
+                owner_id, base_currency, per_txn, daily, monthly, currencies, kyc_verified, sanctions_clear
+            )
+            VALUES (?, 'RUB', ?, ?, ?, ?, TRUE, TRUE)
+            ON CONFLICT (owner_id) DO NOTHING
+            """.trimIndent()
+        ).use { ps ->
+            ps.setLong(1, userId)
+            ps.setBigDecimal(2, perTxn)
+            ps.setBigDecimal(3, daily)
+            ps.setBigDecimal(4, monthly)
+            ps.setArray(5, conn.createArrayOf("text", currencies))
+            ps.executeUpdate()
+        }
+    }
 
     private fun mapUser(rs: ResultSet) = User(
         id = rs.getLong("id"),

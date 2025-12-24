@@ -1,7 +1,9 @@
 package ru.finpact.infra.repository.impl
 
 import ru.finpact.contracts.core.ContractViolation
+import ru.finpact.fx.FxRateProvider
 import ru.finpact.infra.db.Database
+import ru.finpact.infra.repository.LimitsRepository
 import ru.finpact.infra.repository.PaymentRepository
 import ru.finpact.model.*
 import java.math.BigDecimal
@@ -9,7 +11,10 @@ import java.math.RoundingMode
 import java.sql.Connection
 import java.sql.ResultSet
 
-class PaymentRepositoryImpl : PaymentRepository {
+class PaymentRepositoryImpl(
+    private val limitsRepository: LimitsRepository,
+    private val fxRateProvider: FxRateProvider,
+) : PaymentRepository {
 
     override fun createTransfer(
         initiatedBy: Long,
@@ -42,7 +47,7 @@ class PaymentRepositoryImpl : PaymentRepository {
 
             val currency = from.currency.trim().uppercase()
 
-            val reason: String? = when {
+            val baseReason: String? = when {
                 !from.isActive -> "account is not active"
                 !to.isActive -> "account not found"
                 from.currency.trim().uppercase() != to.currency.trim().uppercase() -> "account not found"
@@ -50,7 +55,7 @@ class PaymentRepositoryImpl : PaymentRepository {
                 else -> null
             }
 
-            if (reason != null) {
+            if (baseReason != null) {
                 val failed = insertTransfer(
                     conn = conn,
                     initiatedBy = initiatedBy,
@@ -63,7 +68,94 @@ class PaymentRepositoryImpl : PaymentRepository {
                     refundOf = null,
                     description = normalizedDescription,
                 )
-                return@withTransaction CreateTransferOutcome.Failure(reason, failed.id)
+                return@withTransaction CreateTransferOutcome.Failure(baseReason, failed.id)
+            }
+
+            val profile = limitsRepository.lockProfileForUpdate(conn, initiatedBy)
+                ?: return@withTransaction failNoInsert("limits profile not found")
+
+            if (!profile.kycVerified) {
+                val failed = insertTransfer(
+                    conn = conn,
+                    initiatedBy = initiatedBy,
+                    fromAccountId = fromAccountId,
+                    toAccountId = toAccountId,
+                    amount = normalizedAmount,
+                    currency = currency,
+                    status = PaymentStatus.FAILED,
+                    kind = PaymentKind.TRANSFER,
+                    refundOf = null,
+                    description = normalizedDescription,
+                )
+                return@withTransaction CreateTransferOutcome.Failure("kyc required", failed.id)
+            }
+
+            if (!profile.sanctionsClear) {
+                val failed = insertTransfer(
+                    conn = conn,
+                    initiatedBy = initiatedBy,
+                    fromAccountId = fromAccountId,
+                    toAccountId = toAccountId,
+                    amount = normalizedAmount,
+                    currency = currency,
+                    status = PaymentStatus.FAILED,
+                    kind = PaymentKind.TRANSFER,
+                    refundOf = null,
+                    description = normalizedDescription,
+                )
+                return@withTransaction CreateTransferOutcome.Failure("sanctions hit", failed.id)
+            }
+
+            if (profile.baseCurrency != "RUB") {
+                return@withTransaction failNoInsert("invalid limits base currency")
+            }
+
+            if (!profile.currencies.contains(currency)) {
+                val failed = insertTransfer(
+                    conn = conn,
+                    initiatedBy = initiatedBy,
+                    fromAccountId = fromAccountId,
+                    toAccountId = toAccountId,
+                    amount = normalizedAmount,
+                    currency = currency,
+                    status = PaymentStatus.FAILED,
+                    kind = PaymentKind.TRANSFER,
+                    refundOf = null,
+                    description = normalizedDescription,
+                )
+                return@withTransaction CreateTransferOutcome.Failure("currency not allowed", failed.id)
+            }
+
+            val amountRub = try {
+                fxRateProvider.toRub(normalizedAmount, currency)
+            } catch (_: Throwable) {
+                return@withTransaction failNoInsert("fx conversion failed")
+            }
+
+            val dailyUsed = limitsRepository.getDailyUsed(conn, initiatedBy)
+            val monthlyUsed = limitsRepository.getMonthlyUsed(conn, initiatedBy)
+
+            val limitReason: String? = when {
+                amountRub > profile.perTxn -> "limit per_txn exceeded"
+                dailyUsed + amountRub > profile.daily -> "limit daily exceeded"
+                monthlyUsed + amountRub > profile.monthly -> "limit monthly exceeded"
+                else -> null
+            }
+
+            if (limitReason != null) {
+                val failed = insertTransfer(
+                    conn = conn,
+                    initiatedBy = initiatedBy,
+                    fromAccountId = fromAccountId,
+                    toAccountId = toAccountId,
+                    amount = normalizedAmount,
+                    currency = currency,
+                    status = PaymentStatus.FAILED,
+                    kind = PaymentKind.TRANSFER,
+                    refundOf = null,
+                    description = normalizedDescription,
+                )
+                return@withTransaction CreateTransferOutcome.Failure(limitReason, failed.id)
             }
 
             withdraw(conn, fromAccountId, normalizedAmount)
@@ -81,6 +173,8 @@ class PaymentRepositoryImpl : PaymentRepository {
                 refundOf = null,
                 description = normalizedDescription,
             )
+
+            limitsRepository.addUsage(conn, initiatedBy, amountRub)
 
             CreateTransferOutcome.Success(completed)
         }
@@ -537,6 +631,18 @@ class PaymentRepositoryImpl : PaymentRepository {
 private fun String.toViolation(): ContractViolation = when (this) {
     "account not found" -> ContractViolation.notFound("account not found")
     "payment not found" -> ContractViolation.notFound("payment not found")
+
+    "limits profile not found" -> ContractViolation.internal("limits profile not found")
+    "invalid limits base currency" -> ContractViolation.internal("invalid limits base currency")
+    "fx conversion failed" -> ContractViolation.internal("fx conversion failed")
+
+    "currency not allowed" -> ContractViolation.conflict("currency is not allowed by limits profile")
+    "limit per_txn exceeded" -> ContractViolation.conflict("per-txn limit exceeded")
+    "limit daily exceeded" -> ContractViolation.conflict("daily limit exceeded")
+    "limit monthly exceeded" -> ContractViolation.conflict("monthly limit exceeded")
+    "kyc required" -> ContractViolation.conflict("kyc verification is required")
+    "sanctions hit" -> ContractViolation.conflict("operation is forbidden by sanctions policy")
+
     "amount scale must be <= 4" -> ContractViolation.badRequest("amount scale must be <= 4")
     "insufficient funds" -> ContractViolation.conflict("insufficient funds")
     "account is not active" -> ContractViolation.conflict("account is not active")
